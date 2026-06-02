@@ -13,7 +13,7 @@ systems. It offers:
 - Internal browser tab for seamless problem-solving platform integration
 - Smart auto-indent functionality
 - Syntax highlighting support
-- All-in-one implementation in a single file
+- Modularized architecture
 
 ---
 
@@ -24,6 +24,7 @@ Before installing DeltaEdit, ensure you have the following dependencies
 installed:
 
 ```
+❯ git
 ❯ python3-gi
 ❯ gir1.2-webkit2-4.0
 ❯ python3-pip
@@ -31,6 +32,19 @@ installed:
 ❯ gir1.2-glib-2.0
 ❯ gir1.2-vte-2.91
 ```
+
+### Optional Dependencies (for LSP & Tree-Sitter):
+For features like code autocomplete, diagnostics, and tree-sitter based highlighting:
+
+- **Tree-Sitter Highlighting & Indent:**
+  ```bash
+  pip3 install tree-sitter tree-sitter-languages
+  ```
+- **LSP Servers:**
+  - Python: `pylsp` (via pip) or `pyright-langserver` (via npm)
+  - C/C++: `clangd`
+  - Rust: `rust-analyzer`
+
 
 ### Installation:
 1. Run `Installer.py` to install DeltaEdit.
