@@ -1,332 +1,1944 @@
 #!/usr/bin/python3
 import gi
-from subprocess import Popen
 import sys
 import os
+import shutil
+import subprocess
+import threading
+import json
+import urllib.parse
+
 gi.require_version('Gtk', '3.0')
-gi.require_version('Vte', '2.91')
-#gi.require_version('WebKit2', '4.0')
 gi.require_version('GtkSource', '4')
-from gi.repository import Gtk, GtkSource, Vte, GLib
+gi.require_version('Vte', '2.91')
+
+# Detect WebKit2 version dynamically
+try:
+    gi.require_version('WebKit2', '4.1')
+except ValueError:
+    try:
+        gi.require_version('WebKit2', '4.0')
+    except ValueError:
+        pass
+
+from gi.repository import Gtk, Gdk, GtkSource, Vte, GLib, Pango
 from gi.repository import WebKit2 as WebKit
-print("DeltaEdit____________________0000 0000 0000 0111")
-print("_______________Welcome__________________________")
-class AppWindow(Gtk.ApplicationWindow):
-    def __init__(self,*args,**kwargs):
-        super().__init__(*args,**kwargs)
-        self.set_default_size(900,900)
-        self.currentfilename = 'COPYING'
-        titleforwin=Gtk.HeaderBar()
-        titleforwin.props.title="DeltaEdit-"
-        titleforwin.set_show_close_button(False)
-        self.set_titlebar(titleforwin)
-        container=Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=1)
-        buttonwin=Gtk.Button.new_with_label("Popup Memo")
-        buttonwin.connect("clicked", self.newwin)
-        container.pack_end(buttonwin, True, True, 0)
-        self.scrollwin=Gtk.ScrolledWindow()
-        self.add(self.scrollwin)
-        box = Gtk.Grid.new()
-        box.set_row_spacing(1)
-        self.scrollwin.add(box)
-        self.Text = Gtk.Entry()
-        licensetitle="COPYING"
-        self.Text.set_text(licensetitle)
-        box.attach(self.Text, 0, 0, 1, 1)
-        self.Text1 = GtkSource.Buffer()
-        gnu="This file is part of DeltaEdit.\nDeltaEdit is free software:\nyou can redistribute it and/\nor modify it\nunder the terms of the\nGNU General Public License\nas published by the Free Software Foundation,\neither version 3 of the License,\nor(at your option) any later version.\nDeltaEdit is distributed in the hope \nthat it will be useful,\nbut WITHOUT ANY WARRANTY;\nwithout even the implied warranty of MERCHANTABILITY\nor FITNESS FOR A PARTICULAR PURPOSE.\nSee the GNU General Public License\nfor more details.\nYou should have received\na copy of the GNU General Public License\nalong with DeltaEdit.\nIf not, see <https://www.gnu.org/licenses/"
-        insertstart=self.Text1.get_start_iter()
-        self.Text1.insert(insertstart, gnu)
-        self.Text1v = GtkSource.View(height_request=1, width_request=1, buffer = self.Text1)
-        self.Text1v.set_tab_width(2)
-        self.Text1v.set_auto_indent(True)
-        self.Text1v.set_indent_on_tab(True)
-        self.TextScrollWindow = Gtk.ScrolledWindow()
-        self.TextScrollWindow.add(self.Text1v)
-        box.attach_next_to(self.TextScrollWindow, self.Text, Gtk.PositionType.BOTTOM, 200, 300)
-        button = Gtk.Button.new_with_label("Save")
-        button.connect("clicked", self.Save)
-        container.pack_start(button, True, True, 0)
-        button2 = Gtk.Button.new_with_label("Open")
-        button2.connect("clicked", self.Open)
-        container.pack_start(button2, True, True, 0)
-        info = Gtk.Button().new_with_label("DeltaEdit")
-        imageattach=Gtk.Image()
-        imageattach.set_from_file('/usr/share/pixmaps/dedit_logo.png')
-        info.connect("clicked", self.Egg)
-        info.add(imageattach)
-        container.pack_end(info, True, True, 0)
-        cleanbtn = Gtk.Button.new_with_label("*CLEAN ALL LINES*You can't recover deleted lines!")
-        cleanbtn.connect("clicked", self.CLEAN)
-        box.attach_next_to(cleanbtn, self.TextScrollWindow, Gtk.PositionType.BOTTOM, 1, 1)
-        lbl = Gtk.Label.new_with_mnemonic("command to Execute/or type URL")
-        box.attach_next_to(lbl, cleanbtn, Gtk.PositionType.BOTTOM, 1, 1)
-        self.memo = Gtk.Entry()
-        self.memo.set_text("put your command!/or Type URL and Press ENTER To go to URL")
-        box.attach_next_to(self.memo, lbl, Gtk.PositionType.BOTTOM,  1, 1)
-        command = Gtk.Button.new_with_label("EXECUTE!")
-        command.connect("clicked", self.Execute)
-        box.attach_next_to(command, self.memo, Gtk.PositionType.BOTTOM, 1, 1)
-        label_slot=Gtk.Label.new_with_mnemonic("Specify Encoding if you don't like to open it in utf-8  \n")
-        box.attach_next_to(label_slot, command, Gtk.PositionType.BOTTOM, 1, 1)
-        self.paper_encoding=Gtk.Entry()
-        self.encDefined = 'cp949'
-        with open('/etc/dedit/encoding.editconf','r',encoding='utf-8') as f:
-            self.encDefined = f.readline()
-            self.encDefined = self.encDefined.strip()
-        self.paper_encoding.set_text(self.encDefined)
-        box.attach_next_to(self.paper_encoding, label_slot,Gtk.PositionType.BOTTOM, 1, 1)
-        self.helper=Gtk.Button.new_with_label("Show Encoding Helper")
-        self.helper.connect("clicked", self.doc)
-        box.attach_next_to(self.helper, self.paper_encoding, Gtk.PositionType.BOTTOM, 1, 1)
-        self.hide_helper=Gtk.Button.new_with_label("Hide Encoding Helper")
-        self.hide_helper.connect("clicked", self.hidedoc)
-        box.attach_next_to(self.hide_helper, self.helper, Gtk.PositionType.BOTTOM, 1, 1)
-        label_quit=Gtk.Label.new_with_mnemonic("-Description-")
-        box.attach_next_to(label_quit, self.hide_helper, Gtk.PositionType.BOTTOM, 1, 1)
-        quitbutton=Gtk.Button.new_with_label("Quit Dedit")
-        quitbutton.connect("clicked", self.Quit)
-        container.pack_end(quitbutton, False, False, 0)
-        titleforwin.add(container)
-        self.help_buffer=Gtk.TextBuffer()
-        self.sherpa=Gtk.TextView(width_request=1, height_request=1, buffer=self.help_buffer)
-        box.attach_next_to(self.sherpa, label_quit, Gtk.PositionType.BOTTOM, 1, 1)
-        launch_gmemo=Gtk.Button.new_with_label("Execute External Memo App")
-        launch_gmemo.connect("clicked", self.gmemo)
-        box.attach_next_to(launch_gmemo, self.sherpa, Gtk.PositionType.BOTTOM, 1, 1)
-        combine=Gtk.Button.new_with_label("Combine")
-        combine.connect("clicked", self.combiner)
-        container.pack_start(combine, True, True, 0)
-        self.memo.connect("activate", self.webpage)
-        self.webview=WebKit.WebView()
-        box.attach_next_to(self.webview, self.TextScrollWindow, Gtk.PositionType.RIGHT, 300,300)
-        self.btnforward=Gtk.Button.new_with_label(">")
-        self.btnback=Gtk.Button.new_with_label("<")
-        self.btnforward.connect("clicked", self.forward)
-        self.btnback.connect("clicked", self.back)
-        box.attach_next_to(self.btnback,self.webview, Gtk.PositionType.TOP, 1,1)
-        box.attach_next_to(self.btnforward,self.btnback,Gtk.PositionType.RIGHT,1,1)
+
+# Optional markdown package
+try:
+    import markdown
+    HAS_MARKDOWN = True
+except ImportError:
+    HAS_MARKDOWN = False
+
+# Optional tree-sitter package
+try:
+    import tree_sitter
+    import tree_sitter_languages
+    HAS_TREE_SITTER = True
+except ImportError:
+    HAS_TREE_SITTER = False
+
+
+class TreeSitterHighlighter:
+    """Uses tree-sitter to perform precise AST-based semantic highlighting when available."""
+    def __init__(self, buffer, filepath, is_dark=True):
+        self.buffer = buffer
+        self.filepath = filepath
+        self.parser = None
+        self.lang = None
+        self.tags = {}
+        self.is_dark = is_dark
         
-        self.hide_web=Gtk.Button.new_with_label("Hide Web Browser")
-        self.hide_web.connect("clicked", self.hide_web_func)
-        box.attach_next_to(self.hide_web,self.btnforward,Gtk.PositionType.RIGHT,1,1)
-        self.show_web=Gtk.Button.new_with_label("Show Web Browser")
-        self.show_web.connect("clicked", self.show_web_func)
-        box.attach_next_to(self.show_web,self.hide_web,Gtk.PositionType.RIGHT,1,1)
-        self.blanklabel=Gtk.Label.new_with_mnemonic("                                                                                                                                                                                                                                                                                                            ")
-        box.attach_next_to(self.blanklabel,self.show_web,Gtk.PositionType.RIGHT,1,1)
-        self.terminal     = Vte.Terminal()
-        self.terminal.spawn_sync(
-        Vte.PtyFlags.DEFAULT,
-        os.environ['HOME'],
-        ["/bin/bash"],
-        [],
-        GLib.SpawnFlags.DO_NOT_REAP_CHILD,
-        None,
-        None,
-        )
-        box.attach_next_to(self.terminal,self.TextScrollWindow,Gtk.PositionType.RIGHT,200,200)
+        if not HAS_TREE_SITTER or not filepath:
+            return
+            
+        ext = os.path.splitext(filepath)[1].lower()
+        lang_id = None
+        if ext == '.rs':
+            lang_id = 'rust'
+        elif ext == '.py':
+            lang_id = 'python'
+        elif ext in ['.c', '.cpp', '.h', '.cc']:
+            lang_id = 'c'
+            
+        if lang_id:
+            try:
+                self.lang = tree_sitter_languages.get_language(lang_id)
+                self.parser = tree_sitter.Parser()
+                self.parser.set_language(self.lang)
+                
+                # Define highlight tags
+                colors = {
+                    'keyword': ("#cba6f7", "#8839ef"),
+                    'string': ("#a6e3a1", "#40a02b"),
+                    'comment': ("#585b70", "#9ca0b0"),
+                    'function': ("#89b4fa", "#1e66f5"),
+                    'type': ("#f9e2af", "#df8e1d"),
+                    'number': ("#fab387", "#fe640b"),
+                }
+                
+                self.tags = {
+                    'keyword': buffer.create_tag("ts_keyword", foreground=colors['keyword'][0] if is_dark else colors['keyword'][1], weight=Pango.Weight.BOLD),
+                    'string': buffer.create_tag("ts_string", foreground=colors['string'][0] if is_dark else colors['string'][1]),
+                    'comment': buffer.create_tag("ts_comment", foreground=colors['comment'][0] if is_dark else colors['comment'][1], style=Pango.Style.ITALIC),
+                    'function': buffer.create_tag("ts_function", foreground=colors['function'][0] if is_dark else colors['function'][1]),
+                    'type': buffer.create_tag("ts_type", foreground=colors['type'][0] if is_dark else colors['type'][1]),
+                    'number': buffer.create_tag("ts_number", foreground=colors['number'][0] if is_dark else colors['number'][1]),
+                }
+            except Exception as e:
+                print(f"[TreeSitter] Initialization failed for {filepath}: {e}")
 
-        self.webview.load_uri("https://www.google.com/")
+    def update_theme(self, is_dark):
+        self.is_dark = is_dark
+        if not self.tags:
+            return
+        colors = {
+            'keyword': ("#cba6f7", "#8839ef"),
+            'string': ("#a6e3a1", "#40a02b"),
+            'comment': ("#585b70", "#9ca0b0"),
+            'function': ("#89b4fa", "#1e66f5"),
+            'type': ("#f9e2af", "#df8e1d"),
+            'number': ("#fab387", "#fe640b"),
+        }
+        for key, (dark_color, light_color) in colors.items():
+            if key in self.tags:
+                self.tags[key].set_property("foreground", dark_color if is_dark else light_color)
+
+    def highlight(self):
+        if not self.parser:
+            return
+            
+        start = self.buffer.get_start_iter()
+        end = self.buffer.get_end_iter()
+        text = self.buffer.get_text(start, end, True)
+        
+        try:
+            tree = self.parser.parse(text.encode('utf-8'))
+            
+            # Clear previous highlights
+            for tag in self.tags.values():
+                self.buffer.remove_tag(tag, start, end)
+                
+            self._apply_highlight_node(tree.root_node, text)
+        except Exception as e:
+            print(f"[TreeSitter] Highlighting error: {e}")
+
+    def _apply_highlight_node(self, node, full_text):
+        node_type = node.type
+        tag_key = None
+        
+        if node_type in ['keyword', 'conditional', 'repeat', 'return_statement', 'let_keyword']:
+            tag_key = 'keyword'
+        elif node_type in ['string', 'raw_string_literal', 'char_literal']:
+            tag_key = 'string'
+        elif node_type in ['comment', 'line_comment', 'block_comment']:
+            tag_key = 'comment'
+        elif node_type in ['function_definition', 'call_expression', 'function_item']:
+            tag_key = 'function'
+        elif node_type in ['type_identifier', 'primitive_type']:
+            tag_key = 'type'
+        elif node_type in ['number_literal', 'integer_literal', 'float_literal']:
+            tag_key = 'number'
+            
+        if tag_key and tag_key in self.tags:
+            s_byte = node.start_byte
+            e_byte = node.end_byte
+            
+            # Convert byte offset to character offset
+            s_char = len(full_text.encode('utf-8')[:s_byte].decode('utf-8', errors='ignore'))
+            e_char = len(full_text.encode('utf-8')[:e_byte].decode('utf-8', errors='ignore'))
+            
+            s_iter = self.buffer.get_iter_at_offset(s_char)
+            e_iter = self.buffer.get_iter_at_offset(e_char)
+            self.buffer.apply_tag(self.tags[tag_key], s_iter, e_iter)
+            
+        for child in node.children:
+            self._apply_highlight_node(child, full_text)
+
+    def get_indent_depth_at_char_offset(self, char_offset):
+        if not self.parser or not self.lang:
+            return 0
+            
+        start = self.buffer.get_start_iter()
+        end = self.buffer.get_end_iter()
+        text = self.buffer.get_text(start, end, True)
+        
+        try:
+            tree = self.parser.parse(text.encode('utf-8'))
+            byte_offset = len(text[:char_offset].encode('utf-8'))
+            
+            node = tree.root_node
+            depth = 0
+            
+            block_node_types = {
+                'compound_statement',
+                'block',
+                'function_definition',
+                'class_definition',
+                'if_statement',
+                'for_statement',
+                'while_statement',
+                'declaration_list',
+            }
+            
+            while True:
+                found_child = False
+                for child in node.children:
+                    if child.start_byte <= byte_offset <= child.end_byte:
+                        if child.type in block_node_types:
+                            depth += 1
+                        node = child
+                        found_child = True
+                        break
+                if not found_child:
+                    break
+                    
+            return depth
+        except Exception as e:
+            print(f"[TreeSitter] Indent analysis failed: {e}")
+            return 0
+
+
+class LSPManager:
+    """Manages LSP servers in the background using subprocesses and JSON-RPC over stdin/stdout."""
+    def __init__(self, app_window):
+        self.app_window = app_window
+        self.servers = {}           # file_path -> subprocess.Popen
+        self.threads = {}           # file_path -> threading.Thread
+        self.version_counters = {}  # file_path -> int
+        self.callbacks = {}         # msg_id -> callback function
+        self.next_id = 10           # next JSON-RPC request ID
+
+    def start_server_for_file(self, file_path, lang):
+        if not file_path or file_path in self.servers:
+            return
+
+        cmd = None
+        ext = os.path.splitext(file_path)[1].lower()
+        
+        if ext == '.rs':
+            rust_analyzer = os.path.expanduser("~/.cargo/bin/rust-analyzer")
+            if shutil.which(rust_analyzer):
+                cmd = [rust_analyzer]
+            elif shutil.which("rust-analyzer"):
+                cmd = ["rust-analyzer"]
+        elif ext == '.py':
+            if shutil.which("pylsp"):
+                cmd = ["pylsp"]
+            elif shutil.which("pyright-langserver"):
+                cmd = ["pyright-langserver", "--stdio"]
+        elif ext in ['.c', '.cpp', '.h', '.cc']:
+            if shutil.which("clangd"):
+                cmd = ["clangd"]
+
+        if not cmd:
+            return
+
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0
+            )
+            self.servers[file_path] = proc
+            self.version_counters[file_path] = 1
+
+            # Start reading thread
+            t = threading.Thread(target=self._read_loop, args=(file_path, proc), daemon=True)
+            self.threads[file_path] = t
+            t.start()
+
+            # Send initialize message
+            self._send_initialize(file_path)
+        except Exception as e:
+            print(f"[LSP] Failed to start LSP server for {file_path}: {e}")
+
+    def stop_server_for_file(self, file_path):
+        proc = self.servers.pop(file_path, None)
+        if proc:
+            try:
+                proc.terminate()
+            except:
+                pass
+        self.threads.pop(file_path, None)
+        self.version_counters.pop(file_path, None)
+
+    def notify_open(self, file_path, text, lang):
+        self.start_server_for_file(file_path, lang)
+        if file_path not in self.servers:
+            return
+
+        lang_id = lang if lang else "plaintext"
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == '.rs':
+            lang_id = "rust"
+        elif ext == '.py':
+            lang_id = "python"
+        elif ext in ['.c', '.cpp', '.h']:
+            lang_id = "c"
+
+        params = {
+            "textDocument": {
+                "uri": f"file://{os.path.abspath(file_path)}",
+                "languageId": lang_id,
+                "version": self.version_counters[file_path],
+                "text": text
+            }
+        }
+        self._send_request(file_path, "textDocument/didOpen", params, is_notification=True)
+
+    def notify_change(self, file_path, text):
+        if file_path not in self.servers:
+            return
+        self.version_counters[file_path] += 1
+        params = {
+            "textDocument": {
+                "uri": f"file://{os.path.abspath(file_path)}",
+                "version": self.version_counters[file_path]
+            },
+            "contentChanges": [
+                {
+                    "text": text
+                }
+            ]
+        }
+        self._send_request(file_path, "textDocument/didChange", params, is_notification=True)
+
+    def _send_initialize(self, file_path):
+        root_dir = os.path.dirname(os.path.abspath(file_path))
+        params = {
+            "processId": os.getpid(),
+            "rootUri": f"file://{root_dir}",
+            "capabilities": {
+                "textDocument": {
+                    "publishDiagnostics": {
+                        "relatedInformation": True
+                    },
+                    "completion": {
+                        "completionItem": {
+                            "snippetSupport": True
+                        }
+                    }
+                }
+            }
+        }
+        self._send_request(file_path, "initialize", params, msg_id=1)
+
+    def send_request_with_callback(self, file_path, method, params, callback):
+        if file_path not in self.servers:
+            return
+        msg_id = self.next_id
+        self.next_id += 1
+        self.callbacks[msg_id] = callback
+        self._send_request(file_path, method, params, msg_id=msg_id)
+
+    def _send_request(self, file_path, method, params, msg_id=None, is_notification=False):
+        proc = self.servers.get(file_path)
+        if not proc or proc.poll() is not None:
+            return
+
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        }
+        if not is_notification:
+            payload["id"] = msg_id if msg_id is not None else 100
+
+        try:
+            body = json.dumps(payload)
+            msg = f"Content-Length: {len(body)}\r\n\r\n{body}"
+            proc.stdin.write(msg.encode('utf-8'))
+            proc.stdin.flush()
+        except Exception as e:
+            print(f"[LSP] Error sending message for {file_path}: {e}")
+
+    def _read_loop(self, file_path, proc):
+        try:
+            while proc.poll() is None:
+                header_line = proc.stdout.readline()
+                if not header_line:
+                    break
+                if header_line.startswith(b"Content-Length:"):
+                    content_length = int(header_line.split(b":")[1].strip())
+                    proc.stdout.readline()  # consume empty line
+                    body = proc.stdout.read(content_length)
+                    try:
+                        msg = json.loads(body.decode('utf-8'))
+                        self._handle_msg(file_path, msg)
+                    except Exception as json_err:
+                        print("[LSP] JSON Parse Error:", json_err)
+        except Exception as e:
+            print(f"[LSP] Read Loop Error for {file_path}: {e}")
+
+    def _handle_msg(self, file_path, msg):
+        if "method" in msg:
+            method = msg["method"]
+            if method == "textDocument/publishDiagnostics":
+                params = msg.get("params", {})
+                diagnostics = params.get("diagnostics", [])
+                GLib.idle_add(self.app_window.apply_diagnostics, file_path, diagnostics)
+        elif "id" in msg:
+            msg_id = msg["id"]
+            if msg_id in self.callbacks:
+                callback = self.callbacks.pop(msg_id)
+                GLib.idle_add(callback, msg.get("result"))
+            elif msg_id == 1:
+                self._send_request(file_path, "initialized", {}, is_notification=True)
+
+
+class AutocompletePopup(Gtk.Window):
+    def __init__(self, parent_view):
+        super().__init__(type=Gtk.WindowType.POPUP)
+        self.view = parent_view
+        self.set_transient_for(parent_view.get_toplevel())
+        self.set_decorated(False)
+        self.set_keep_above(True)
+        
+        # Scrollable container for ListBox
+        self.scrolled = Gtk.ScrolledWindow()
+        self.scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        self.scrolled.set_max_content_height(250)
+        self.scrolled.set_propagate_natural_height(True)
+        
+        self.listbox = Gtk.ListBox()
+        self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.listbox.connect("row-activated", self.on_row_activated)
+        self.scrolled.add(self.listbox)
+        self.add(self.scrolled)
+        
+        self.apply_popup_style()
+        self.items = []
+        self.raw_items = []
         self.show_all()
-        self.show_web.hide()
-        ##버튼이 사용하게 될 함수들을 정의합니다.##
-    def webpage(self,widget):
-        urlget=str(self.memo.get_text())
-        wc=urlget[0:4]
-        checkhead=urlget[0:8]
-        checkhead2=urlget[0:7]
-        if checkhead=='https://':
-            chkdt=urlget[8:12]
-            if chkdt=='www.':
-                self.webview.load_uri(urlget)
-            else:
-                urlget_last=urlget[8:]
-                newurl_adj="https://www.%s" % urlget_last
-                self.webview.load_uri(newurl_adj)
-        elif checkhead2=='http://':
-            chkdt__=urlget[7:11]
-            if chkdt__=='www.':
-                self.webview.load_uri(urlget)
-            else:
-                urllast=urlget[7:]
-                newurl_adj2="http://www.%s" % urllast
-                self.webview.load_uri(newurl_adj2)
-        elif wc == 'www.':
-            try:
-                urlll="https://%s" % urlget
-                self.webview.load_uri(urlll)
-            except:
-                urllle="http://%s" % urlget
-                self.webview.load_uri(urllle)
-        else:
-            urllll="https://www.%s" % urlget
-            urlllll="http://www.%s" % urlget
-            try:
-                self.webview.load_uri(urllll)
-            except:
-                self.webview.load_uri(urlllll)
-    def forward(self,widget):
-        try:
-                self.webview.go_forward()    
-        except:
-                print("error::can't go forward!")
-    def back(self,widget):
-        try:
-            self.webview.go_back()
-        except:
-            print("error::Can't go back!")
-    def gmemo(self, widget):
-        try:
-            Popen('gmemo')
-        except:
-            Popen('/usr/bin/gmemo')
-    def CLEAN(self, widget):
-        cleanstart = self.Text1.get_start_iter()
-        cleanend = self.Text1.get_end_iter()
-        clean = self.Text1.delete(cleanstart, cleanend)
-    def Save(self, widget):
-        txtpre = self.Text.get_text()
-        txtpre= str(txtpre)
-        dialog = Gtk.FileChooserDialog("Save...", self, Gtk.FileChooserAction.SAVE, (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_SAVE, Gtk.ResponseType.OK))
-        Gtk.FileChooser.set_current_name(dialog, txtpre)
-        response = dialog.run()
-        if response == Gtk.ResponseType.OK:
-            savefile = dialog.get_filename()
-            startt = self.Text1.get_start_iter()
-            endt = self.Text1.get_end_iter()
-            text = self.Text1.get_text(startt, endt, True)
-            try:
-                with open(savefile, 'w', encoding='utf-8') as f:
-                    f.write(text)
-                    f.close()
-                dialog.destroy()
-            except:
-                with open(savefile, 'w', encoding=self.encDefined) as f:
-                    f.write(text)
-                    f.close()
-                dialog.destroy()
-        elif response == Gtk.ResponseType.CANCEL:
-            dialog.destroy()
-        dialog.destroy()
-    def Open(self, widget):
-        self.start2 = self.Text1.get_start_iter()
-        self.end2 = self.Text1.get_end_iter()
-        dialog = Gtk.FileChooserDialog("Open File...", self,  Gtk.FileChooserAction.OPEN, (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
-        response = dialog.run()
-        if response == Gtk.ResponseType.OK:
-            self.Text.set_text("")
-            self.Text1.delete(self.start2, self.end2)
-            w = dialog.get_filename()
-            self.RawOpen(w)
-            self.langmod()
-        else:
-            dialog.destroy()
-        try:
-            dialog.destroy()
-        except:
-            dialog.destroy()
-    def RawOpen(self,w):
-        self.currentfilename = w
-        try:
-            with open(w, 'r', encoding='utf8') as f:
-                data=f.read()
-                self.Text.set_text(w)
-                self.Text1.insert(self.start2,data)
-        except:
-            with open(w,'r',encoding=self.encDefined) as f:
-                data=f.read()
-                self.Text.set_text(w)
-                self.Text1.insert(self.start2,data)
 
-    def combiner(self, widget):
-        end1 = self.Text1.get_end_iter()
-        dialog = Gtk.FileChooserDialog("Combine...", self,  Gtk.FileChooserAction.OPEN, (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
+    def apply_popup_style(self):
+        toplevel = self.view.get_toplevel()
+        is_dark = getattr(toplevel, 'is_dark', True)
+        
+        css_provider = Gtk.CssProvider()
+        if is_dark:
+            css = b"""
+            list {
+                background-color: #242538;
+                border: 1px solid #45475a;
+                border-radius: 6px;
+            }
+            row {
+                padding: 4px 8px;
+                color: #cdd6f4;
+            }
+            row:selected {
+                background-color: #313244;
+                color: #b4befe;
+            }
+            label.dim-label {
+                color: #585b70;
+                font-size: 0.9em;
+            }
+            """
+        else:
+            css = b"""
+            list {
+                background-color: #e6e9ef;
+                border: 1px solid #bcc0cc;
+                border-radius: 6px;
+            }
+            row {
+                padding: 4px 8px;
+                color: #4c4f69;
+            }
+            row:selected {
+                background-color: #ccd0da;
+                color: #7287fd;
+            }
+            label.dim-label {
+                color: #9ca0b0;
+                font-size: 0.9em;
+            }
+            """
+        css_provider.load_from_data(css)
+        self.get_style_context().add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    def get_current_prefix(self):
+        buffer = self.view.get_buffer()
+        cursor_iter = buffer.get_iter_at_mark(buffer.get_insert())
+        
+        start_iter = cursor_iter.copy()
+        while start_iter.get_line_offset() > 0:
+            start_iter.backward_char()
+            char = start_iter.get_char()
+            if not (char.isalnum() or char == '_'):
+                start_iter.forward_char()
+                break
+        return buffer.get_text(start_iter, cursor_iter, True)
+
+    def populate_items(self, raw_items):
+        self.raw_items = raw_items
+        self.filter_items()
+
+    def filter_items(self):
+        prefix = self.get_current_prefix().lower()
+        
+        # Clear listbox
+        for child in self.listbox.get_children():
+            self.listbox.remove(child)
+            
+        self.items = []
+        
+        LSP_KIND_MAP = {
+            1: ("Text", "📝"),
+            2: ("Method", "📦"),
+            3: ("Function", "λ"),
+            4: ("Constructor", "🛠️"),
+            5: ("Field", "🏷️"),
+            6: ("Variable", "x"),
+            7: ("Class", "🏛️"),
+            8: ("Interface", "🔌"),
+            9: ("Module", "📦"),
+            10: ("Property", "🔧"),
+            11: ("Unit", "📏"),
+            12: ("Value", "💎"),
+            13: ("Enum", "🔢"),
+            14: ("Keyword", "🔑"),
+            15: ("Snippet", "✂️"),
+            16: ("Color", "🎨"),
+            17: ("File", "📄"),
+            18: ("Reference", "🔗"),
+            19: ("Folder", "📂"),
+            20: ("EnumMember", "🔢"),
+            21: ("Constant", "π"),
+            22: ("Struct", "🏗️"),
+            23: ("Event", "🔔"),
+            24: ("Operator", "±"),
+            25: ("TypeParameter", "T")
+        }
+        
+        for item in self.raw_items:
+            label = item.get("label", "")
+            if prefix and not label.lower().startswith(prefix):
+                continue
+                
+            self.items.append(item)
+            
+            row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            
+            kind_val = item.get("kind", 1)
+            kind_name, icon = LSP_KIND_MAP.get(kind_val, ("Text", "📝"))
+            
+            lbl_icon = Gtk.Label(label=icon)
+            lbl_label = Gtk.Label(label=label)
+            lbl_label.set_halign(Gtk.Align.START)
+            
+            detail = item.get("detail", "")
+            if not detail:
+                detail = kind_name
+            lbl_detail = Gtk.Label(label=detail)
+            lbl_detail.set_halign(Gtk.Align.END)
+            lbl_detail.get_style_context().add_class("dim-label")
+            
+            lbl_icon.set_size_request(20, -1)
+            
+            row_box.pack_start(lbl_icon, False, False, 0)
+            row_box.pack_start(lbl_label, True, True, 0)
+            row_box.pack_end(lbl_detail, False, False, 0)
+            
+            self.listbox.add(row_box)
+            
+        self.show_all()
+        
+        if self.items:
+            self.listbox.select_row(self.listbox.get_row_at_index(0))
+            self.position_popup()
+            self.show()
+        else:
+            self.hide()
+
+    def position_popup(self):
+        buffer = self.view.get_buffer()
+        cursor_iter = buffer.get_iter_at_mark(buffer.get_insert())
+        rect = self.view.get_iter_location(cursor_iter)
+        
+        win_x, win_y = self.view.buffer_to_window_coords(
+            Gtk.TextWindowType.TEXT, rect.x, rect.y + rect.height
+        )
+        
+        gdk_win = self.view.get_window(Gtk.TextWindowType.TEXT)
+        if not gdk_win:
+            return
+        origin_x, origin_y = gdk_win.get_origin()
+        
+        self.move(origin_x + win_x, origin_y + win_y)
+
+    def move_selection(self, step):
+        selected_row = self.listbox.get_selected_row()
+        if not selected_row:
+            return
+        idx = selected_row.get_index()
+        new_idx = idx + step
+        if 0 <= new_idx < len(self.items):
+            row_to_select = self.listbox.get_row_at_index(new_idx)
+            self.listbox.select_row(row_to_select)
+            
+            adj = self.scrolled.get_vadjustment()
+            row_rect = row_to_select.get_allocation()
+            adj.clamp_page(row_rect.y, row_rect.y + row_rect.height)
+
+    def confirm_selection(self):
+        selected_row = self.listbox.get_selected_row()
+        if not selected_row:
+            self.get_toplevel().destroy_autocomplete_popup()
+            return
+            
+        idx = selected_row.get_index()
+        if idx >= len(self.items):
+            self.get_toplevel().destroy_autocomplete_popup()
+            return
+            
+        item = self.items[idx]
+        insert_text = item.get("insertText") or item.get("label", "")
+        
+        buffer = self.view.get_buffer()
+        cursor_iter = buffer.get_iter_at_mark(buffer.get_insert())
+        
+        start_iter = cursor_iter.copy()
+        prefix_len = len(self.get_current_prefix())
+        start_iter.backward_chars(prefix_len)
+        
+        buffer.begin_user_action()
+        buffer.delete(start_iter, cursor_iter)
+        buffer.insert(start_iter, insert_text)
+        buffer.end_user_action()
+        
+        self.get_toplevel().destroy_autocomplete_popup()
+
+    def on_row_activated(self, listbox, row):
+        self.confirm_selection()
+
+
+class AppWindow(Gtk.ApplicationWindow):
+    def __init__(self, *args, **kwargs):
+        files = kwargs.pop("files", [])
+        super().__init__(*args, **kwargs)
+        self.set_default_size(1250, 850)
+        
+        self.lsp_manager = LSPManager(self)
+        self.tabs = []
+        
+        # Load directories fallback config
+        self.setup_config()
+        
+        # Setup CSS provider
+        self.css_provider = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            self.css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        
+        # Determine initial theme
+        self.is_dark = self.check_system_dark()
+        self.apply_theme()
+        
+        # Connect to system theme changes
+        settings = Gtk.Settings.get_default()
+        settings.connect("notify::gtk-theme-name", self.on_system_theme_changed)
+        settings.connect("notify::gtk-application-prefer-dark-theme", self.on_system_theme_changed)
+        
+        # HeaderBar Setup
+        self.create_headerbar()
+        
+        # Accelerators (shortcuts)
+        self.setup_accelerators()
+        
+        # Layout splits
+        self.main_paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        self.main_paned.set_position(700)
+        self.add(self.main_paned)
+        
+        # Left Panel: Editor Tabs
+        self.editor_notebook = Gtk.Notebook()
+        self.editor_notebook.connect("switch-page", self.on_tab_switched)
+        self.main_paned.pack1(self.editor_notebook, resize=True, shrink=False)
+        
+        # Right Panel: Utility Tabs
+        self.tools_notebook = Gtk.Notebook()
+        self.main_paned.pack2(self.tools_notebook, resize=True, shrink=True)
+        
+        # Web Browser tab
+        self.create_web_tab()
+        
+        # Terminal tab
+        self.create_terminal_tab()
+        
+        # Helper/Encoding tab
+        self.create_helper_tab()
+        
+        # Load command line files or empty tab
+        if files:
+            for filepath in files:
+                self.add_editor_tab(filepath)
+        else:
+            self.add_editor_tab()
+            
+        self.show_all()
+
+    def setup_config(self):
+        self.conf_dir = os.path.expanduser("~/.config/dedit")
+        os.makedirs(self.conf_dir, exist_ok=True)
+        
+        enc_file = os.path.join(self.conf_dir, "encoding.editconf")
+        if not os.path.exists(enc_file):
+            if os.path.exists("/etc/dedit/encoding.editconf"):
+                try:
+                    shutil.copy("/etc/dedit/encoding.editconf", enc_file)
+                except:
+                    pass
+            else:
+                with open(enc_file, 'w', encoding='utf-8') as f:
+                    f.write("utf-8\n")
+                    
+        try:
+            with open(enc_file, 'r', encoding='utf-8') as f:
+                self.encDefined = f.readline().strip()
+        except:
+            self.encDefined = 'utf-8'
+
+        self.help_file = os.path.join(self.conf_dir, "help.txt")
+        try:
+            with open(self.help_file, 'w', encoding='utf-8') as f:
+                f.write("=== DeltaEdit Quick Help ===\n\nShortcuts:\n  Ctrl+N : New File\n  Ctrl+O : Open File\n  Ctrl+S : Save File\n  Ctrl+W : Close Current Tab\n  Ctrl+Shift+P : Preview Current Document\n  Ctrl+K : Cut Current Line\n  Ctrl+P : Paste from Clipboard\n  Ctrl+Z : Undo\n  Ctrl+Y : Redo\n\nWeb + Editor Integration:\n  - Right click on text selection to search Google in Web Tab.\n  - Press Preview button in Web Browser to preview markdown or HTML live.\n")
+        except:
+            pass
+
+    def check_system_dark(self):
+        settings = Gtk.Settings.get_default()
+        prefer_dark = settings.get_property("gtk-application-prefer-dark-theme")
+        theme_name = settings.get_property("gtk-theme-name")
+        if prefer_dark:
+            return True
+        if theme_name and "dark" in theme_name.lower():
+            return True
+        return False
+
+    def apply_theme(self):
+        settings = Gtk.Settings.get_default()
+        settings.set_property("gtk-application-prefer-dark-theme", self.is_dark)
+
+        if self.is_dark:
+            css = b"""
+            window {
+                background-color: #1e1e2e;
+                color: #cdd6f4;
+            }
+            headerbar {
+                background: linear-gradient(to bottom, #313244, #1e1e2e);
+                border-bottom: 1px solid #45475a;
+                color: #cdd6f4;
+            }
+            headerbar .title {
+                font-weight: bold;
+                color: #b4befe;
+            }
+            button {
+                background: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 6px;
+                padding: 5px 10px;
+            }
+            button:hover {
+                background: #45475a;
+                border-color: #585b70;
+            }
+            entry {
+                background: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 6px;
+                padding: 5px;
+            }
+            notebook header {
+                background: #181825;
+                border-bottom: 1px solid #313244;
+            }
+            notebook tab {
+                background: #181825;
+                border: 1px solid #313244;
+                border-bottom-width: 0;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                padding: 4px 10px;
+                color: #a6adc8;
+            }
+            notebook tab:active {
+                background: #1e1e2e;
+                color: #cdd6f4;
+                border-color: #45475a;
+            }
+            """
+        else:
+            css = b"""
+            window {
+                background-color: #f4f4f6;
+                color: #4c4f69;
+            }
+            headerbar {
+                background: linear-gradient(to bottom, #e6e9ef, #dce0e8);
+                border-bottom: 1px solid #bcc0cc;
+                color: #4c4f69;
+            }
+            headerbar .title {
+                font-weight: bold;
+                color: #7287fd;
+            }
+            button {
+                background: #e6e9ef;
+                color: #4c4f69;
+                border: 1px solid #bcc0cc;
+                border-radius: 6px;
+                padding: 5px 10px;
+            }
+            button:hover {
+                background: #ccd0da;
+                border-color: #acb0be;
+            }
+            entry {
+                background: #e6e9ef;
+                color: #4c4f69;
+                border: 1px solid #bcc0cc;
+                border-radius: 6px;
+                padding: 5px;
+            }
+            notebook header {
+                background: #e6e9ef;
+                border-bottom: 1px solid #bcc0cc;
+            }
+            notebook tab {
+                background: #e6e9ef;
+                border: 1px solid #bcc0cc;
+                border-bottom-width: 0;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                padding: 4px 10px;
+                color: #4c4f69;
+            }
+            notebook tab:active {
+                background: #f4f4f6;
+                color: #4c4f69;
+                border-color: #bcc0cc;
+            }
+            """
+        self.css_provider.load_from_data(css)
+
+    def on_system_theme_changed(self, settings, pspec):
+        new_is_dark = self.check_system_dark()
+        if new_is_dark != self.is_dark:
+            self.is_dark = new_is_dark
+            self.apply_theme()
+            self.update_editor_schemes()
+            if hasattr(self, 'btn_theme'):
+                icon_name = "weather-clear-night" if self.is_dark else "weather-clear"
+                self.btn_theme.set_image(Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON))
+
+    def on_theme_toggle_clicked(self, widget):
+        self.is_dark = not self.is_dark
+        self.apply_theme()
+        self.update_editor_schemes()
+        if hasattr(self, 'btn_theme'):
+            icon_name = "weather-clear-night" if self.is_dark else "weather-clear"
+            self.btn_theme.set_image(Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON))
+
+    def update_editor_schemes(self):
+        scheme_manager = GtkSource.StyleSchemeManager.get_default()
+        scheme_name = "oblivion" if self.is_dark else "classic"
+        scheme = scheme_manager.get_scheme(scheme_name)
+        if scheme:
+            for tab in self.tabs:
+                tab["buffer"].set_style_scheme(scheme)
+                if tab["highlighter"]:
+                    tab["highlighter"].update_theme(self.is_dark)
+                    tab["highlighter"].highlight()
+
+    def destroy_autocomplete_popup(self):
+        if hasattr(self, 'autocomplete_popup') and self.autocomplete_popup:
+            self.autocomplete_popup.destroy()
+            self.autocomplete_popup = None
+
+    def on_view_key_press(self, view, event):
+        keyval = event.keyval
+        
+        # Enter key for smart auto-indentation (when autocomplete is NOT active)
+        if keyval in [Gdk.KEY_Return, Gdk.KEY_KP_Enter]:
+            if hasattr(self, 'autocomplete_popup') and self.autocomplete_popup and self.autocomplete_popup.get_visible():
+                self.autocomplete_popup.confirm_selection()
+                return True
+            else:
+                return self.handle_auto_indent(view)
+
+        # Smart outdent on typing closing brackets: '}', ')', ']'
+        elif keyval in [Gdk.KEY_braceright, Gdk.KEY_parenright, Gdk.KEY_bracketright]:
+            if self.handle_closing_bracket(view, keyval):
+                return True
+
+        # Autocomplete keyboard navigation
+        if hasattr(self, 'autocomplete_popup') and self.autocomplete_popup and self.autocomplete_popup.get_visible():
+            # Up Arrow
+            if keyval == Gdk.KEY_Up:
+                self.autocomplete_popup.move_selection(-1)
+                return True
+                
+            # Down Arrow
+            elif keyval == Gdk.KEY_Down:
+                self.autocomplete_popup.move_selection(1)
+                return True
+                
+            # Tab selection
+            elif keyval == Gdk.KEY_Tab:
+                self.autocomplete_popup.confirm_selection()
+                return True
+                
+            # Escape
+            elif keyval == Gdk.KEY_Escape:
+                self.destroy_autocomplete_popup()
+                return True
+                
+        return False
+
+    def handle_closing_bracket(self, view, keyval):
+        current = self.get_current_tab()
+        if not current:
+            return False
+            
+        buffer = current["buffer"]
+        cursor_mark = buffer.get_insert()
+        cursor_iter = buffer.get_iter_at_mark(cursor_mark)
+        
+        line_num = cursor_iter.get_line()
+        start_iter = buffer.get_iter_at_line(line_num)
+        line_text = buffer.get_text(start_iter, cursor_iter, True)
+        
+        # Only outdent if the line consists entirely of whitespace before the bracket
+        if line_text.strip() == "":
+            char_map = {
+                Gdk.KEY_braceright: "}",
+                Gdk.KEY_parenright: ")",
+                Gdk.KEY_bracketright: "]"
+            }
+            bracket = char_map.get(keyval, "}")
+            
+            # Remove 4 spaces of indentation if possible
+            if len(line_text) >= 4 and line_text.endswith("    "):
+                delete_start = cursor_iter.copy()
+                delete_start.backward_chars(4)
+                
+                buffer.begin_user_action()
+                buffer.delete(delete_start, cursor_iter)
+                buffer.insert(delete_start, bracket)
+                buffer.end_user_action()
+                
+                # Scroll to cursor
+                view.scroll_to_mark(cursor_mark, 0.0, False, 0.0, 0.0)
+                return True
+        return False
+
+    def handle_auto_indent(self, view):
+        current = self.get_current_tab()
+        if not current:
+            return False
+            
+        buffer = current["buffer"]
+        cursor_mark = buffer.get_insert()
+        cursor_iter = buffer.get_iter_at_mark(cursor_mark)
+        char_offset = cursor_iter.get_offset()
+        
+        line_num = cursor_iter.get_line()
+        start_iter = buffer.get_iter_at_line(line_num)
+        line_text = buffer.get_text(start_iter, cursor_iter, True)
+        
+        # Base indentation of the current line
+        base_indent = ""
+        for c in line_text:
+            if c in [' ', '\t']:
+                base_indent += c
+            else:
+                break
+                
+        extra_indent = ""
+        # Try Tree-Sitter AST context parsing first
+        if current["highlighter"] and HAS_TREE_SITTER and current["highlighter"].parser:
+            highlighter = current["highlighter"]
+            start_all = buffer.get_start_iter()
+            end_all = buffer.get_end_iter()
+            text_all = buffer.get_text(start_all, end_all, True)
+            
+            try:
+                tree = highlighter.parser.parse(text_all.encode('utf-8'))
+                byte_offset = len(text_all[:char_offset].encode('utf-8'))
+                
+                # Find current node at cursor
+                node = tree.root_node.descendant_for_byte_range(byte_offset, byte_offset)
+                
+                trimmed_prev = line_text.strip()
+                
+                # C-style or Python indent trigger check:
+                if trimmed_prev.endswith('{') or trimmed_prev.endswith('(') or trimmed_prev.endswith('[') or trimmed_prev.endswith(':'):
+                    extra_indent = "    "
+                else:
+                    # Check AST parents for unclosed statement list or parameters
+                    parent = node.parent
+                    while parent:
+                        if parent.type in ['argument_list', 'parameter_list', 'parenthesized_expression', 'compound_statement', 'block']:
+                            extra_indent = "    "
+                            break
+                        parent = parent.parent
+            except Exception as e:
+                print(f"[TreeSitter] Advanced indent failed: {e}")
+        else:
+            # Fallback simple indentation rules
+            trimmed_prev = line_text.strip()
+            if trimmed_prev.endswith('{') or trimmed_prev.endswith('(') or trimmed_prev.endswith('[') or trimmed_prev.endswith(':'):
+                extra_indent = "    "
+                
+        # Handle Enter right between { and } for dual spacing layout
+        next_iter = cursor_iter.copy()
+        is_between_brackets = False
+        if next_iter.get_char() == '}':
+            trimmed_prev = line_text.strip()
+            if trimmed_prev.endswith('{'):
+                is_between_brackets = True
+                
+        buffer.begin_user_action()
+        if is_between_brackets:
+            # Insert double newline, indent the middle, and keep bracket on bottom line
+            buffer.insert(cursor_iter, "\n" + base_indent + extra_indent + "\n" + base_indent)
+            # Move cursor back to the middle line
+            back_iter = buffer.get_iter_at_mark(cursor_mark)
+            back_iter.backward_line()
+            back_iter.forward_to_line_end()
+            buffer.place_cursor(back_iter)
+        else:
+            buffer.insert(cursor_iter, "\n" + base_indent + extra_indent)
+        buffer.end_user_action()
+        
+        view.scroll_to_mark(cursor_mark, 0.0, False, 0.0, 0.0)
+        return True
+
+    def trigger_autocomplete(self, tab_info):
+        self.autocomplete_timeout_id = None
+        
+        current = self.get_current_tab()
+        if not current or current["filepath"] != tab_info["filepath"]:
+            return False
+            
+        buffer = tab_info["buffer"]
+        cursor_iter = buffer.get_iter_at_mark(buffer.get_insert())
+        
+        if cursor_iter.get_line_offset() == 0:
+            self.destroy_autocomplete_popup()
+            return False
+            
+        prev_iter = cursor_iter.copy()
+        prev_iter.backward_char()
+        char = prev_iter.get_char()
+        
+        import string
+        allowed_chars = string.ascii_letters + string.digits + "_."
+        if char not in allowed_chars:
+            self.destroy_autocomplete_popup()
+            return False
+            
+        line = cursor_iter.get_line()
+        col = cursor_iter.get_line_offset()
+        
+        params = {
+            "textDocument": {
+                "uri": f"file://{os.path.abspath(tab_info['filepath'])}"
+            },
+            "position": {
+                "line": line,
+                "character": col
+            }
+        }
+        
+        self.lsp_manager.send_request_with_callback(
+            tab_info["filepath"],
+            "textDocument/completion",
+            params,
+            lambda res: self.on_completion_response(tab_info, res)
+        )
+        return False
+
+    def on_completion_response(self, tab_info, result):
+        current = self.get_current_tab()
+        if not current or current["filepath"] != tab_info["filepath"]:
+            return
+            
+        if not result:
+            self.destroy_autocomplete_popup()
+            return
+            
+        items = []
+        if isinstance(result, dict):
+            items = result.get("items", [])
+        elif isinstance(result, list):
+            items = result
+            
+        if not items:
+            self.destroy_autocomplete_popup()
+            return
+            
+        items = items[:50]
+        
+        if not hasattr(self, 'autocomplete_popup') or not self.autocomplete_popup:
+            self.autocomplete_popup = AutocompletePopup(current["view"])
+            
+        self.autocomplete_popup.populate_items(items)
+
+
+    def create_headerbar(self):
+        self.hb = Gtk.HeaderBar()
+        self.hb.set_show_close_button(True)
+        self.hb.props.title = "DeltaEdit"
+        self.set_titlebar(self.hb)
+
+        # Left controls
+        btn_new = Gtk.Button.new_from_icon_name("document-new", Gtk.IconSize.BUTTON)
+        btn_new.set_tooltip_text("Create New File (Ctrl+N)")
+        btn_new.connect("clicked", lambda w: self.add_editor_tab())
+        self.hb.pack_start(btn_new)
+
+        btn_open = Gtk.Button.new_from_icon_name("document-open", Gtk.IconSize.BUTTON)
+        btn_open.set_tooltip_text("Open File (Ctrl+O)")
+        btn_open.connect("clicked", self.on_open_clicked)
+        self.hb.pack_start(btn_open)
+
+        btn_save = Gtk.Button.new_from_icon_name("document-save", Gtk.IconSize.BUTTON)
+        btn_save.set_tooltip_text("Save Current File (Ctrl+S)")
+        btn_save.connect("clicked", self.on_save_clicked)
+        self.hb.pack_start(btn_save)
+
+        btn_save_as = Gtk.Button.new_from_icon_name("document-save-as", Gtk.IconSize.BUTTON)
+        btn_save_as.set_tooltip_text("Save File As (Ctrl+Shift+S)")
+        btn_save_as.connect("clicked", self.on_save_as_clicked)
+        self.hb.pack_start(btn_save_as)
+
+        btn_combine = Gtk.Button.new_with_label("Combine")
+        btn_combine.set_tooltip_text("Append another file content to the end of this file")
+        btn_combine.connect("clicked", self.on_combine_clicked)
+        self.hb.pack_start(btn_combine)
+
+        # Right controls
+        btn_info = Gtk.Button.new_from_icon_name("help-about", Gtk.IconSize.BUTTON)
+        btn_info.connect("clicked", self.on_info_clicked)
+        self.hb.pack_end(btn_info)
+
+        btn_shortcuts = Gtk.Button.new_from_icon_name("help-contents", Gtk.IconSize.BUTTON)
+        btn_shortcuts.set_tooltip_text("Shortcuts Help")
+        btn_shortcuts.connect("clicked", self.show_shortcuts_popup)
+        self.hb.pack_end(btn_shortcuts)
+
+        self.btn_theme = Gtk.Button.new_from_icon_name("weather-clear-night" if self.is_dark else "weather-clear", Gtk.IconSize.BUTTON)
+        self.btn_theme.set_tooltip_text("Toggle Light/Dark Theme")
+        self.btn_theme.connect("clicked", self.on_theme_toggle_clicked)
+        self.hb.pack_end(self.btn_theme)
+
+        btn_memo = Gtk.Button.new_with_label("External Memo")
+        btn_memo.set_tooltip_text("Launch GMemo app")
+        btn_memo.connect("clicked", self.on_external_memo_clicked)
+        self.hb.pack_end(btn_memo)
+
+    def show_shortcuts_popup(self, widget):
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text="DeltaEdit Shortcuts"
+        )
+        dialog.format_secondary_text(
+            "• Ctrl + N : Create New File\n"
+            "• Ctrl + O : Open File\n"
+            "• Ctrl + S : Save File\n"
+            "• Ctrl + Shift + S : Save File As\n"
+            "• Ctrl + W : Close Current Tab\n"
+            "• Ctrl + Shift + P : Preview Current Document\n"
+            "• Ctrl + K : Cut Current Line\n"
+            "• Ctrl + P : Paste from Clipboard\n"
+            "• Ctrl + Z : Undo\n"
+            "• Ctrl + Y : Redo"
+        )
+        dialog.run()
+        dialog.destroy()
+
+    def setup_accelerators(self):
+        accel = Gtk.AccelGroup()
+        self.add_accel_group(accel)
+        
+        # Ctrl+N : New
+        key, mod = Gtk.accelerator_parse("<Control>n")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.add_editor_tab())
+        
+        # Ctrl+O : Open
+        key, mod = Gtk.accelerator_parse("<Control>o")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.on_open_clicked(None))
+        
+        # Ctrl+S : Save
+        key, mod = Gtk.accelerator_parse("<Control>s")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.on_save_clicked(None))
+        
+        # Ctrl+Shift+S : Save As
+        key, mod = Gtk.accelerator_parse("<Control><Shift>s")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.on_save_as_clicked(None))
+
+        # Ctrl+W : Close Current Tab
+        key, mod = Gtk.accelerator_parse("<Control>w")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.close_current_tab())
+        
+        # Ctrl+Shift+P : Preview
+        key, mod = Gtk.accelerator_parse("<Control><Shift>p")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.on_preview_clicked(None))
+        
+        # Ctrl+K : Cut Line
+        key, mod = Gtk.accelerator_parse("<Control>k")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.cut_current_line())
+        
+        # Ctrl+P : Paste Line/Text
+        key, mod = Gtk.accelerator_parse("<Control>p")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.paste_from_clipboard())
+        
+        # Ctrl+Z : Undo
+        key, mod = Gtk.accelerator_parse("<Control>z")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.undo_action())
+        
+        # Ctrl+Y : Redo
+        key, mod = Gtk.accelerator_parse("<Control>y")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.redo_action())
+
+    def cut_current_line(self):
+        current = self.get_current_tab()
+        if not current:
+            return
+        buffer = current["buffer"]
+        
+        cursor_mark = buffer.get_insert()
+        cursor_iter = buffer.get_iter_at_mark(cursor_mark)
+        line_num = cursor_iter.get_line()
+        
+        start_iter = buffer.get_iter_at_line(line_num)
+        end_iter = start_iter.copy()
+        
+        end_iter.forward_to_line_end()
+        
+        next_iter = end_iter.copy()
+        if next_iter.forward_char():
+            end_iter = next_iter
+            
+        text = buffer.get_text(start_iter, end_iter, True)
+        
+        clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        clipboard.set_text(text, -1)
+        
+        buffer.begin_user_action()
+        buffer.delete(start_iter, end_iter)
+        buffer.end_user_action()
+
+    def paste_from_clipboard(self):
+        current = self.get_current_tab()
+        if not current:
+            return
+        buffer = current["buffer"]
+        
+        clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        buffer.begin_user_action()
+        buffer.paste_clipboard(clipboard, None, True)
+        buffer.end_user_action()
+
+    def undo_action(self):
+        current = self.get_current_tab()
+        if not current:
+            return
+        buffer = current["buffer"]
+        if buffer.can_undo():
+            buffer.undo()
+
+    def redo_action(self):
+        current = self.get_current_tab()
+        if not current:
+            return
+        buffer = current["buffer"]
+        if buffer.can_redo():
+            buffer.redo()
+
+    def create_web_tab(self):
+        web_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        
+        # Controls Bar
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
+        btn_back = Gtk.Button.new_from_icon_name("go-previous", Gtk.IconSize.MENU)
+        btn_back.connect("clicked", lambda w: self.webview.go_back())
+        btn_forward = Gtk.Button.new_from_icon_name("go-next", Gtk.IconSize.MENU)
+        btn_forward.connect("clicked", lambda w: self.webview.go_forward())
+        btn_refresh = Gtk.Button.new_from_icon_name("view-refresh", Gtk.IconSize.MENU)
+        btn_refresh.connect("clicked", lambda w: self.webview.reload())
+        
+        self.url_entry = Gtk.Entry()
+        self.url_entry.set_placeholder_text("Type URL or search query and press Enter")
+        self.url_entry.connect("activate", self.on_url_activated)
+        
+        btn_preview = Gtk.Button.new_with_label("Preview Current")
+        btn_preview.set_tooltip_text("Live preview Markdown or HTML (Ctrl+P)")
+        btn_preview.connect("clicked", self.on_preview_clicked)
+
+        toolbar.pack_start(btn_back, False, False, 0)
+        toolbar.pack_start(btn_forward, False, False, 0)
+        toolbar.pack_start(btn_refresh, False, False, 0)
+        toolbar.pack_start(self.url_entry, True, True, 0)
+        toolbar.pack_start(btn_preview, False, False, 0)
+        
+        web_box.pack_start(toolbar, False, False, 0)
+        
+        # WebView Scrolled Window
+        scrolled = Gtk.ScrolledWindow()
+        self.webview = WebKit.WebView()
+        self.webview.load_uri("https://www.google.com")
+        scrolled.add(self.webview)
+        web_box.pack_start(scrolled, True, True, 0)
+        
+        # Sync URL bar on navigation
+        self.webview.connect("load-changed", self.on_web_load_changed)
+        
+        self.tools_notebook.append_page(web_box, Gtk.Label(label="Web Browser"))
+
+    def create_terminal_tab(self):
+        self.terminal = Vte.Terminal()
+        self.terminal.spawn_sync(
+            Vte.PtyFlags.DEFAULT,
+            os.environ['HOME'],
+            ["/bin/bash"],
+            [],
+            GLib.SpawnFlags.DO_NOT_REAP_CHILD,
+            None,
+            None,
+        )
+        # Style terminal slightly dark
+        self.terminal.set_color_background(Gdk.RGBA(0.1, 0.1, 0.15, 1.0))
+        self.terminal.set_color_foreground(Gdk.RGBA(0.8, 0.8, 0.95, 1.0))
+        
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.add(self.terminal)
+        self.tools_notebook.append_page(scrolled, Gtk.Label(label="Terminal"))
+
+    def create_helper_tab(self):
+        helper_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        helper_box.set_border_width(8)
+        
+        # Encoding config
+        enc_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        enc_lbl = Gtk.Label(label="Default Encoding: ")
+        self.paper_encoding = Gtk.Entry()
+        self.paper_encoding.set_text(self.encDefined)
+        enc_btn = Gtk.Button.new_with_label("Apply Encoding")
+        enc_btn.connect("clicked", self.on_apply_encoding_clicked)
+        
+        enc_box.pack_start(enc_lbl, False, False, 0)
+        enc_box.pack_start(self.paper_encoding, True, True, 0)
+        enc_box.pack_start(enc_btn, False, False, 0)
+        
+        helper_box.pack_start(enc_box, False, False, 0)
+        
+        # Help file viewer
+        help_lbl = Gtk.Label(label="DeltaEdit Documentation")
+        help_lbl.set_halign(Gtk.Align.START)
+        helper_box.pack_start(help_lbl, False, False, 0)
+        
+        self.help_buffer = Gtk.TextBuffer()
+        help_view = Gtk.TextView(buffer=self.help_buffer)
+        help_view.set_editable(False)
+        help_view.set_wrap_mode(Gtk.WrapMode.WORD)
+        
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.add(help_view)
+        helper_box.pack_start(scrolled, True, True, 0)
+        
+        # Load help file content
+        self.load_help_content()
+        
+        self.tools_notebook.append_page(helper_box, Gtk.Label(label="Help & Encoding"))
+
+    def load_help_content(self):
+        try:
+            with open(self.help_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                self.help_buffer.set_text(content)
+        except Exception as e:
+            self.help_buffer.set_text(f"Error loading help file: {e}")
+
+    def on_apply_encoding_clicked(self, widget):
+        self.encDefined = self.paper_encoding.get_text().strip()
+        enc_file = os.path.join(self.conf_dir, "encoding.editconf")
+        try:
+            with open(enc_file, 'w', encoding='utf-8') as f:
+                f.write(self.encDefined + "\n")
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                flags=0,
+                message_type=Gtk.MessageType.INFO,
+                buttons=Gtk.ButtonsType.OK,
+                text="Encoding Updated"
+            )
+            dialog.format_secondary_text(f"Default encoding changed to '{self.encDefined}'")
+            dialog.run()
+            dialog.destroy()
+        except Exception as e:
+            print("Failed to save encoding configurations:", e)
+
+    def add_editor_tab(self, filepath=None):
+        buffer = GtkSource.Buffer()
+        
+        # Configure Syntax styles
+        scheme_manager = GtkSource.StyleSchemeManager.get_default()
+        scheme = scheme_manager.get_scheme("oblivion" if self.is_dark else "classic")
+        if scheme:
+            buffer.set_style_scheme(scheme)
+
+        # Setup Diagnostics Styles in buffer
+        tag_err = buffer.create_tag("lsp_error", underline=Pango.Underline.SINGLE, foreground="red")
+        tag_warn = buffer.create_tag("lsp_warning", underline=Pango.Underline.SINGLE, foreground="orange")
+        
+        view = GtkSource.View(height_request=1, width_request=1, buffer=buffer)
+        view.set_show_line_numbers(True)
+        view.set_highlight_current_line(True)
+        view.set_auto_indent(False)
+        view.set_indent_on_tab(True)
+        view.set_tab_width(4)
+        
+        font_desc = Pango.FontDescription("Monospace 11")
+        view.override_font(font_desc)
+        
+        # Connect key-press-event to intercept keys for custom autocomplete popup
+        view.connect("key-press-event", self.on_view_key_press)
+        
+        # Scrolled window wrapper
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.add(view)
+        
+        # Init Tree-Sitter semantic highlighter if available
+        highlighter = TreeSitterHighlighter(buffer, filepath, self.is_dark) if filepath else None
+
+        tab_info = {
+            "filepath": filepath,
+            "buffer": buffer,
+            "view": view,
+            "scrolled": scrolled,
+            "label_widget": None,
+            "label_title": None,
+            "is_modified": False,
+            "diagnostics": [],
+            "highlighter": highlighter
+        }
+        
+        self.tabs.append(tab_info)
+        
+        # Create tab title container
+        title_str = os.path.basename(filepath) if filepath else "Untitled"
+        tab_title_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        tab_title_lbl = Gtk.Label(label=title_str)
+        tab_info["label_title"] = tab_title_lbl
+        
+        close_btn = Gtk.Button.new_from_icon_name("window-close", Gtk.IconSize.MENU)
+        close_btn.set_relief(Gtk.ReliefStyle.NONE)
+        close_btn.set_can_focus(False)
+        close_btn.connect("clicked", self.on_close_btn_clicked, scrolled)
+        
+        tab_title_box.pack_start(tab_title_lbl, True, True, 0)
+        tab_title_box.pack_start(close_btn, False, False, 0)
+        tab_title_box.show_all()
+        tab_info["label_widget"] = tab_title_box
+        
+        # Insert page
+        page_num = self.editor_notebook.append_page(scrolled, tab_title_box)
+        self.editor_notebook.show_all()
+        self.editor_notebook.set_current_page(page_num)
+        
+        # File Open logic
+        if filepath and os.path.exists(filepath):
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    content = f.read()
+            except UnicodeDecodeError:
+                try:
+                    with open(filepath, 'r', encoding=self.encDefined) as f:
+                        content = f.read()
+                except Exception as e:
+                    content = f"Error opening file: {e}"
+            
+            buffer.set_text(content)
+            # Guess language
+            lang_manager = GtkSource.LanguageManager.get_default()
+            lang = lang_manager.guess_language(filepath)
+            buffer.set_language(lang)
+            
+            # Semantic highlight trigger
+            if highlighter:
+                highlighter.highlight()
+            
+            # Start LSP
+            self.lsp_manager.notify_open(filepath, content, lang.get_id() if lang else None)
+            
+        # Connect modification & connection events
+        buffer.connect("changed", self.on_buffer_changed, tab_info)
+        view.connect("populate-popup", self.on_editor_popup_menu, tab_info)
+        view.connect("query-tooltip", self.on_query_tooltip, tab_info)
+        view.set_has_tooltip(True)
+
+    def on_buffer_changed(self, buffer, tab_info):
+        if not tab_info["is_modified"]:
+            tab_info["is_modified"] = True
+            self.update_tab_title(tab_info)
+            
+        # Semantic highlighting on-change
+        if tab_info["highlighter"]:
+            tab_info["highlighter"].highlight()
+
+        # LSP text sync
+        if tab_info["filepath"]:
+            start = buffer.get_start_iter()
+            end = buffer.get_end_iter()
+            text = buffer.get_text(start, end, True)
+            self.lsp_manager.notify_change(tab_info["filepath"], text)
+            
+            # If popup is visible, filter it instantly. Otherwise, trigger debounced request.
+            if hasattr(self, 'autocomplete_popup') and self.autocomplete_popup and self.autocomplete_popup.get_visible():
+                self.autocomplete_popup.filter_items()
+            
+            # Debounced Autocomplete trigger
+            if hasattr(self, 'autocomplete_timeout_id') and self.autocomplete_timeout_id:
+                GLib.source_remove(self.autocomplete_timeout_id)
+                self.autocomplete_timeout_id = None
+                
+            self.autocomplete_timeout_id = GLib.timeout_add(150, self.trigger_autocomplete, tab_info)
+
+    def update_tab_title(self, tab_info):
+        base = os.path.basename(tab_info["filepath"]) if tab_info["filepath"] else "Untitled"
+        if tab_info["is_modified"]:
+            tab_info["label_title"].set_text(f"*{base}")
+        else:
+            tab_info["label_title"].set_text(base)
+
+    def get_current_tab(self):
+        page_num = self.editor_notebook.get_current_page()
+        if page_num != -1 and page_num < len(self.tabs):
+            return self.tabs[page_num]
+        return None
+
+    def on_close_btn_clicked(self, widget, child_widget):
+        page_num = self.editor_notebook.page_num(child_widget)
+        if page_num != -1:
+            self.close_tab(page_num)
+
+    def close_current_tab(self):
+        page_num = self.editor_notebook.get_current_page()
+        if page_num != -1:
+            self.close_tab(page_num)
+
+    def close_tab(self, page_num):
+        self.destroy_autocomplete_popup()
+        tab = self.tabs[page_num]
+        if tab["is_modified"]:
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                flags=0,
+                message_type=Gtk.MessageType.QUESTION,
+                buttons=Gtk.ButtonsType.YES_NO_CANCEL,
+                text="Unsaved Changes"
+            )
+            dialog.format_secondary_text(f"Do you want to save changes to '{os.path.basename(tab['filepath']) if tab['filepath'] else 'Untitled'}' before closing?")
+            response = dialog.run()
+            dialog.destroy()
+            
+            if response == Gtk.ResponseType.YES:
+                if not self.save_tab(tab):
+                    return
+            elif response == Gtk.ResponseType.CANCEL:
+                return
+
+        # Stop LSP server if active
+        if tab["filepath"]:
+            self.lsp_manager.stop_server_for_file(tab["filepath"])
+
+        self.editor_notebook.remove_page(page_num)
+        self.tabs.pop(page_num)
+        
+        # Fallback to keep one empty editor tab active
+        if self.editor_notebook.get_n_pages() == 0:
+            self.add_editor_tab()
+
+    def on_open_clicked(self, widget):
+        dialog = Gtk.FileChooserDialog(
+            "Open File...",
+            self,
+            Gtk.FileChooserAction.OPEN,
+            (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK)
+        )
         response = dialog.run()
         if response == Gtk.ResponseType.OK:
-            w = dialog.get_filename()
-            self.encDefined=self.paper_encoding.get_text()
+            filepath = dialog.get_filename()
+            already_open = False
+            for t in self.tabs:
+                if t["filepath"] == filepath:
+                    page_num = self.editor_notebook.page_num(t["scrolled"])
+                    self.editor_notebook.set_current_page(page_num)
+                    already_open = True
+                    break
+            if not already_open:
+                self.add_editor_tab(filepath)
+        dialog.destroy()
+
+    def on_save_clicked(self, widget):
+        current = self.get_current_tab()
+        if current:
+            self.save_tab(current)
+
+    def on_save_as_clicked(self, widget):
+        current = self.get_current_tab()
+        if current:
+            self.save_tab(current, force_save_as=True)
+
+    def save_tab(self, tab, force_save_as=False):
+        if not tab["filepath"] or force_save_as:
+            dialog = Gtk.FileChooserDialog(
+                "Save File...",
+                self,
+                Gtk.FileChooserAction.SAVE,
+                (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_SAVE, Gtk.ResponseType.OK)
+            )
+            if tab["filepath"]:
+                dialog.set_filename(tab["filepath"])
+            else:
+                dialog.set_current_name("Untitled.txt")
+                
+            response = dialog.run()
+            if response == Gtk.ResponseType.OK:
+                filepath = dialog.get_filename()
+                dialog.destroy()
+                tab["filepath"] = filepath
+            else:
+                dialog.destroy()
+                return False
+
+        # Save buffer content
+        start = tab["buffer"].get_start_iter()
+        end = tab["buffer"].get_end_iter()
+        text = tab["buffer"].get_text(start, end, True)
+        
+        try:
+            with open(tab["filepath"], 'w', encoding='utf-8') as f:
+                f.write(text)
+        except Exception:
+            try:
+                with open(tab["filepath"], 'w', encoding=self.encDefined) as f:
+                    f.write(text)
+            except Exception as e:
+                err_dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    flags=0,
+                    message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Save Failed"
+                )
+                err_dialog.format_secondary_text(f"Could not save file: {e}")
+                err_dialog.run()
+                err_dialog.destroy()
+                return False
+                
+        tab["is_modified"] = False
+        self.update_tab_title(tab)
+        
+        # Re-initialize semantic highlighter
+        tab["highlighter"] = TreeSitterHighlighter(tab["buffer"], tab["filepath"])
+        if tab["highlighter"]:
+            tab["highlighter"].highlight()
+
+        # Configure language and LSP after saving (in case file extension changed)
+        lang_manager = GtkSource.LanguageManager.get_default()
+        lang = lang_manager.guess_language(tab["filepath"])
+        tab["buffer"].set_language(lang)
+        self.lsp_manager.notify_open(tab["filepath"], text, lang.get_id() if lang else None)
+        return True
+
+    def on_combine_clicked(self, widget):
+        current = self.get_current_tab()
+        if not current:
+            return
+            
+        dialog = Gtk.FileChooserDialog(
+            "Combine File...",
+            self,
+            Gtk.FileChooserAction.OPEN,
+            (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK)
+        )
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            filepath = dialog.get_filename()
             try:
                 try:
-                    with open(w, 'r', encoding='utf-8') as f:
+                    with open(filepath, 'r', encoding='utf-8') as f:
                         impdata = f.read()
-                        self.Text1.insert(end1, impdata)
-                    dialog.destroy()
                 except:
-                    with open(w, 'r', encoding=self.encDefined) as f:
-                        impdata=f.read()
-                        self.Text1.insert(end1, impdata)
-                    dialog.destroy()
-            except:
-                dialog.destroy()
-        elif response == Gtk.ResponseType.CANCEL:
-            dialog.destroy()
+                    with open(filepath, 'r', encoding=self.encDefined) as f:
+                        impdata = f.read()
+                        
+                end_iter = current["buffer"].get_end_iter()
+                current["buffer"].insert(end_iter, "\n" + impdata)
+            except Exception as e:
+                err_dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    flags=0,
+                    message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Combine Error"
+                )
+                err_dialog.format_secondary_text(f"Could not combine: {e}")
+                err_dialog.run()
+                err_dialog.destroy()
         dialog.destroy()
-    def Egg(self, widget):
-        print("*************")
-        print("@#@#@#@#@#@#@")
-        print("&&&&&&&&&&&&&")
-        print("$   $   $   $")
-        print("** *** *** **")
-        print("--DeltaEdit--")
-    def Execute(self, widget):
-        t = self.memo.get_text()
-        t = str(t)
+
+    def on_external_memo_clicked(self, widget):
         try:
-            Popen(t)
+            subprocess.Popen('gmemo')
         except:
-            print("ERROR :: Could not execute GMemo!")
-    def newwin(self, widget):
-        try:
             try:
-                Popen("/usr/bin/gmemo", shell=True)
-            except:
-                Popen("/usr/bin/gmemo", shell=True)
-        except:
-            print("ERROR")
-    def Quit(self, widget):
-        print("DeltaEdit____________________1111 1111 1111 1001")
-        print("________________________Turn_Off________________")
-        exit()
-    def doc(self, widget):
-        place=self.help_buffer.get_start_iter()
-        place_end=self.help_buffer.get_end_iter()
-        document="/etc/dedit/help.txt"
-        with open(document, 'r', encoding='utf-8') as f:
-            pre_document=f.read()
-            document=str(pre_document)
-            self.help_buffer.delete(place, place_end)
-            self.help_buffer.insert(place, document)
-    def hidedoc(self, widget):
-        doc_start=self.help_buffer.get_start_iter()
-        doc_end=self.help_buffer.get_end_iter()
-        self.help_buffer.delete(doc_start, doc_end)
-    def hide_web_func(self,widget):
-        self.webview.hide()
-        self.terminal.show()
-        self.hide_web.hide()
-        self.btnback.hide()
-        self.btnforward.hide()
-        self.show_web.show()
-    def show_web_func(self,widget):
-        self.terminal.hide()
-        self.webview.show()
-        self.hide_web.show()
-        self.btnback.show()
-        self.btnforward.show()
-        self.show_web.hide()
-    def langmod(self):
-        lang=GtkSource.LanguageManager()
-        self.Text1.set_language(lang.guess_language(self.currentfilename))
-        self.Text1v.set_auto_indent(True)
-        self.Text1v.set_indent_on_tab(True)
-ang=GtkSource.LanguageManager()
+                subprocess.Popen('/usr/bin/gmemo')
+            except Exception as e:
+                print("Could not run external GMemo:", e)
+
+    def on_info_clicked(self, widget):
+        dialog = Gtk.AboutDialog(transient_for=self)
+        dialog.set_program_name("DeltaEdit")
+        dialog.set_version("2.0.0")
+        dialog.set_comments("Refactored modern web-integrated text editor with LSP and Tree-sitter support.")
+        dialog.set_logo_icon_name("help-about")
+        dialog.run()
+        dialog.destroy()
+
+    def on_tab_switched(self, notebook, page, page_num):
+        self.destroy_autocomplete_popup()
+        if page_num < len(self.tabs):
+            tab = self.tabs[page_num]
+            title = os.path.basename(tab["filepath"]) if tab["filepath"] else "Untitled"
+            self.hb.props.subtitle = title
+
+    def apply_diagnostics(self, file_path, diagnostics):
+        matched_tab = None
+        for tab in self.tabs:
+            if tab["filepath"] and os.path.abspath(tab["filepath"]) == os.path.abspath(file_path):
+                matched_tab = tab
+                break
+                
+        if not matched_tab:
+            return False
+            
+        buffer = matched_tab["buffer"]
+        start_it = buffer.get_start_iter()
+        end_it = buffer.get_end_iter()
+        
+        # Clear previous markers
+        buffer.remove_tag_by_name("lsp_error", start_it, end_it)
+        buffer.remove_tag_by_name("lsp_warning", start_it, end_it)
+        
+        matched_tab["diagnostics"] = diagnostics
+        
+        for diag in diagnostics:
+            rng = diag.get("range", {})
+            start_pos = rng.get("start", {})
+            end_pos = rng.get("end", {})
+            
+            s_line = start_pos.get("line", 0)
+            s_char = start_pos.get("character", 0)
+            e_line = end_pos.get("line", 0)
+            e_char = end_pos.get("character", 0)
+            
+            s_iter = buffer.get_iter_at_line_offset(s_line, s_char)
+            e_iter = buffer.get_iter_at_line_offset(e_line, e_char)
+            
+            severity = diag.get("severity", 1)
+            if severity == 1:
+                buffer.apply_tag_by_name("lsp_error", s_iter, e_iter)
+            else:
+                buffer.apply_tag_by_name("lsp_warning", s_iter, e_iter)
+                
+        return False
+
+    def on_query_tooltip(self, view, x, y, keyboard_mode, tooltip, tab_info):
+        coords = view.window_to_buffer_coords(Gtk.TextWindowType.WIDGET, x, y)
+        res = view.get_iter_at_location(coords[0], coords[1])
+        if not res:
+            return False
+        iter_at_mouse = res[0]
+        
+        has_tag = False
+        tags = iter_at_mouse.get_tags()
+        for t in tags:
+            if t.get_property("name") in ["lsp_error", "lsp_warning"]:
+                has_tag = True
+                break
+                
+        if not has_tag:
+            return False
+            
+        line = iter_at_mouse.get_line()
+        
+        tooltip_txt = ""
+        for diag in tab_info.get("diagnostics", []):
+            rng = diag.get("range", {})
+            s_line = rng.get("start", {}).get("line", 0)
+            e_line = rng.get("end", {}).get("line", 0)
+            
+            if s_line <= line <= e_line:
+                sev = "Error" if diag.get("severity", 1) == 1 else "Warning"
+                tooltip_txt += f"[{sev}] {diag.get('message')}\n"
+                
+        if tooltip_txt:
+            tooltip.set_text(tooltip_txt.strip())
+            return True
+            
+        return False
+
+    def on_url_activated(self, entry):
+        url = entry.get_text().strip()
+        if not url:
+            return
+            
+        if not (url.startswith("http://") or url.startswith("https://")):
+            if "." in url and " " not in url:
+                url = "https://" + url
+            else:
+                query = urllib.parse.quote(url)
+                url = f"https://www.google.com/search?q={query}"
+                
+        self.webview.load_uri(url)
+
+    def on_web_load_changed(self, webview, event):
+        if event == WebKit.LoadEvent.COMMITTED:
+            uri = webview.get_uri()
+            self.url_entry.set_text(uri)
+
+    def on_preview_clicked(self, widget):
+        current = self.get_current_tab()
+        if not current:
+            return
+            
+        start = current["buffer"].get_start_iter()
+        end = current["buffer"].get_end_iter()
+        text = current["buffer"].get_text(start, end, True)
+        
+        filepath = current["filepath"]
+        ext = os.path.splitext(filepath)[1].lower() if filepath else ""
+        
+        # Color palettes for HTML preview based on theme
+        bg_color = "#1e1e2e" if self.is_dark else "#f4f4f6"
+        text_color = "#cdd6f4" if self.is_dark else "#4c4f69"
+        accent_color = "#89b4fa" if self.is_dark else "#7287fd"
+        border_color = "#45475a" if self.is_dark else "#bcc0cc"
+        code_bg = "#313244" if self.is_dark else "#e6e9ef"
+        code_color = "#f38ba8" if self.is_dark else "#d20f39"
+        
+        html_content = ""
+        if ext in ['.md', '.markdown']:
+            if HAS_MARKDOWN:
+                html_body = markdown.markdown(text)
+            else:
+                # Basic HTML markdown fallback
+                lines = text.split('\n')
+                html_body = ""
+                for line in lines:
+                    if line.startswith('# '):
+                        html_body += f"<h1>{line[2:]}</h1>"
+                    elif line.startswith('## '):
+                        html_body += f"<h2>{line[3:]}</h2>"
+                    elif line.startswith('- ') or line.startswith('* '):
+                        html_body += f"<li>{line[2:]}</li>"
+                    else:
+                        html_body += f"<p>{line}</p>"
+                        
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    body {{
+                        background-color: {bg_color};
+                        color: {text_color};
+                        font-family: sans-serif;
+                        padding: 20px;
+                        line-height: 1.6;
+                    }}
+                    h1, h2, h3 {{ color: {accent_color}; border-bottom: 1px solid {border_color}; padding-bottom: 5px; }}
+                    pre {{ background-color: {code_bg}; padding: 10px; border-radius: 6px; border: 1px solid {border_color}; overflow-x: auto; }}
+                    code {{ font-family: monospace; background-color: {code_bg}; padding: 2px 4px; border-radius: 4px; color: {code_color}; }}
+                    a {{ color: {accent_color}; }}
+                </style>
+            </head>
+            <body>
+                {html_body}
+            </body>
+            </html>
+            """
+            self.webview.load_html(html_content, "file://")
+            self.tools_notebook.set_current_page(0)
+            
+        elif ext in ['.html', '.htm']:
+            self.webview.load_html(text, "file://")
+            self.tools_notebook.set_current_page(0)
+        else:
+            escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            html_content = f"""
+            <html>
+            <body style="background-color: {bg_color}; color: {text_color}; font-family: monospace; padding: 20px;">
+                <pre>{escaped}</pre>
+            </body>
+            </html>
+            """
+            self.webview.load_html(html_content, "file://")
+            self.tools_notebook.set_current_page(0)
+
+    def on_editor_popup_menu(self, view, popup, tab_info):
+        buffer = tab_info["buffer"]
+        has_selection, start, end = buffer.get_selection_bounds()
+        
+        if has_selection:
+            selected_text = buffer.get_text(start, end, True).strip()
+            if selected_text:
+                menu_item = Gtk.MenuItem(label=f"Search Google for '{selected_text[:15]}...'")
+                menu_item.connect("clicked", self.on_search_popup_clicked, selected_text)
+                popup.append(menu_item)
+                popup.show_all()
+
+    def on_search_popup_clicked(self, menu_item, text):
+        query = urllib.parse.quote(text)
+        url = f"https://www.google.com/search?q={query}"
+        self.webview.load_uri(url)
+        self.tools_notebook.set_current_page(0)
+
+
 class Application(Gtk.Application):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, application_id="org.dedit",**kwargs)
-        def do_startup(self):
-            Gtk.Application.do_startup(self)
-        def do_activate(self):
-            self.window=AppWindow(application=self,title="DeltaEdit") 
-app=Application()
-app.run(sys.argv)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, application_id="org.dedit", **kwargs)
+        
+    def do_activate(self):
+        files = []
+        for arg in sys.argv[1:]:
+            if not arg.startswith("-") and os.path.exists(arg):
+                files.append(os.path.abspath(arg))
+                
+        self.window = AppWindow(application=self, files=files)
+
+
+if __name__ == "__main__":
+    app = Application()
+    app.run(sys.argv)
