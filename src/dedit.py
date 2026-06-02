@@ -677,6 +677,9 @@ class AppWindow(Gtk.ApplicationWindow):
         # Helper/Encoding tab
         self.create_helper_tab()
         
+        # Git tab
+        self.create_git_tab()
+        
         # Load command line files or empty tab
         if files:
             for filepath in files:
@@ -1731,6 +1734,300 @@ class AppWindow(Gtk.ApplicationWindow):
             tab = self.tabs[page_num]
             title = os.path.basename(tab["filepath"]) if tab["filepath"] else "Untitled"
             self.hb.props.subtitle = title
+            self.refresh_git_status()
+
+    def create_git_tab(self):
+        git_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        git_box.set_border_width(8)
+        
+        # Upper control bar
+        ctrl_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.git_label = Gtk.Label(label="No Git Repository Detected")
+        self.git_label.set_halign(Gtk.Align.START)
+        
+        btn_refresh = Gtk.Button.new_from_icon_name("view-refresh", Gtk.IconSize.BUTTON)
+        btn_refresh.set_tooltip_text("Refresh Git Status")
+        btn_refresh.connect("clicked", lambda w: self.refresh_git_status())
+        
+        ctrl_box.pack_start(self.git_label, True, True, 0)
+        ctrl_box.pack_end(btn_refresh, False, False, 0)
+        git_box.pack_start(ctrl_box, False, False, 0)
+        
+        # Files split pane (Top: Status Files list, Bottom: Diff view)
+        split_paned = Gtk.Paned(orientation=Gtk.Orientation.VERTICAL)
+        split_paned.set_position(150)
+        git_box.pack_start(split_paned, True, True, 0)
+        
+        # Top half: TreeView of files
+        files_scroll = Gtk.ScrolledWindow()
+        files_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        
+        self.git_store = Gtk.ListStore(str, str, str) # [Status Text, File Path, Absolute Path]
+        self.git_tree = Gtk.TreeView(model=self.git_store)
+        
+        col_status = Gtk.TreeViewColumn("Status", Gtk.CellRendererText(), text=0)
+        col_status.set_width(80)
+        self.git_tree.append_column(col_status)
+        
+        col_file = Gtk.TreeViewColumn("File", Gtk.CellRendererText(), text=1)
+        self.git_tree.append_column(col_file)
+        
+        self.git_tree.connect("row-activated", self.on_git_file_activated)
+        self.git_tree.get_selection().connect("changed", self.on_git_selection_changed)
+        
+        files_scroll.add(self.git_tree)
+        split_paned.pack1(files_scroll, resize=True, shrink=False)
+        
+        # Bottom half: Diff viewer
+        diff_scroll = Gtk.ScrolledWindow()
+        self.diff_buffer = Gtk.TextBuffer()
+        self.diff_view = Gtk.TextView(buffer=self.diff_buffer)
+        self.diff_view.set_editable(False)
+        font_desc = Pango.FontDescription("Monospace 10")
+        self.diff_view.override_font(font_desc)
+        diff_scroll.add(self.diff_view)
+        
+        split_paned.pack2(diff_scroll, resize=True, shrink=True)
+        
+        # Bottom workflow controls (Commit, Stage)
+        actions_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        
+        btn_stage_selected = Gtk.Button.new_with_label("Stage Selected")
+        btn_stage_selected.connect("clicked", self.on_git_stage_selected)
+        btn_unstage_selected = Gtk.Button.new_with_label("Unstage Selected")
+        btn_unstage_selected.connect("clicked", self.on_git_unstage_selected)
+        
+        stage_buttons_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        stage_buttons_box.pack_start(btn_stage_selected, True, True, 0)
+        stage_buttons_box.pack_start(btn_unstage_selected, True, True, 0)
+        actions_box.pack_start(stage_buttons_box, False, False, 0)
+        
+        commit_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self.commit_entry = Gtk.Entry()
+        self.commit_entry.set_placeholder_text("Commit message...")
+        btn_commit = Gtk.Button.new_with_label("Commit")
+        btn_commit.connect("clicked", self.on_git_commit_clicked)
+        
+        commit_box.pack_start(self.commit_entry, True, True, 0)
+        commit_box.pack_end(btn_commit, False, False, 0)
+        actions_box.pack_start(commit_box, False, False, 0)
+        
+        git_box.pack_end(actions_box, False, False, 0)
+        
+        self.tools_notebook.append_page(git_box, Gtk.Label(label="Git"))
+
+    def refresh_git_status(self):
+        current = self.get_current_tab()
+        if not current or not current["filepath"]:
+            if hasattr(self, 'git_label'):
+                self.git_label.set_text("No File Open")
+            if hasattr(self, 'git_store'):
+                self.git_store.clear()
+            if hasattr(self, 'diff_buffer'):
+                self.diff_buffer.set_text("")
+            return
+            
+        git_root = self.get_git_root(current["filepath"])
+        if not git_root:
+            if hasattr(self, 'git_label'):
+                self.git_label.set_text("Not a Git Repository")
+            if hasattr(self, 'git_store'):
+                self.git_store.clear()
+            if hasattr(self, 'diff_buffer'):
+                self.diff_buffer.set_text("")
+            return
+            
+        if hasattr(self, 'git_label'):
+            self.git_label.set_text(f"Git: {os.path.basename(git_root)}")
+        if hasattr(self, 'git_store'):
+            self.git_store.clear()
+        if hasattr(self, 'diff_buffer'):
+            self.diff_buffer.set_text("")
+        
+        stdout, stderr = self.run_git_command(git_root, ["status", "--porcelain"])
+        if stderr and hasattr(self, 'diff_buffer'):
+            self.diff_buffer.set_text(f"Error running git: {stderr}")
+            return
+            
+        lines = stdout.split("\n")
+        status_map = {
+            "M ": "Staged (Mod)",
+            "A ": "Staged (Add)",
+            "D ": "Staged (Del)",
+            " R": "Renamed",
+            " C": "Copied",
+            "M": "Modified",
+            "D": "Deleted",
+            "??": "Untracked",
+            "UU": "Conflict"
+        }
+        
+        for line in lines:
+            if not line:
+                continue
+            status_code = line[:2]
+            rel_path = line[3:]
+            
+            if rel_path.startswith('"') and rel_path.endswith('"'):
+                rel_path = rel_path[1:-1]
+                
+            abs_path = os.path.join(git_root, rel_path)
+            
+            status_text = "Unknown"
+            for code, desc in status_map.items():
+                if status_code.startswith(code) or status_code.endswith(code):
+                    status_text = desc
+                    break
+                    
+            if hasattr(self, 'git_store'):
+                self.git_store.append([status_text, rel_path, abs_path])
+
+    def get_git_root(self, filepath):
+        if not filepath:
+            return None
+        curr = os.path.dirname(os.path.abspath(filepath))
+        while curr != os.path.dirname(curr):
+            if os.path.exists(os.path.join(curr, ".git")):
+                return curr
+            curr = os.path.dirname(curr)
+        return None
+
+    def run_git_command(self, git_root, args):
+        try:
+            res = subprocess.run(
+                ["git"] + args,
+                cwd=git_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            return res.stdout, res.stderr
+        except Exception as e:
+            return "", str(e)
+
+    def on_git_selection_changed(self, selection):
+        model, treeiter = selection.get_selected()
+        if treeiter is not None:
+            status = model[treeiter][0]
+            rel_path = model[treeiter][1]
+            abs_path = model[treeiter][2]
+            
+            current = self.get_current_tab()
+            if current and current["filepath"]:
+                git_root = self.get_git_root(current["filepath"])
+                if git_root:
+                    self.show_git_diff(git_root, rel_path, status)
+
+    def show_git_diff(self, git_root, rel_path, status):
+        self.diff_buffer.set_text("")
+        
+        tag_add = self.diff_buffer.create_tag("diff_add", foreground="#a6e3a1" if self.is_dark else "#40a02b")
+        tag_del = self.diff_buffer.create_tag("diff_del", foreground="#f38ba8" if self.is_dark else "#d20f39")
+        tag_hdr = self.diff_buffer.create_tag("diff_hdr", foreground="#89b4fa" if self.is_dark else "#1e66f5", weight=Pango.Weight.BOLD)
+        
+        args = ["diff"]
+        if "Staged" in status:
+            args.append("--cached")
+        args.append(rel_path)
+        
+        stdout, stderr = self.run_git_command(git_root, args)
+        
+        if not stdout and not stderr:
+            if "Untracked" in status:
+                abs_path = os.path.join(git_root, rel_path)
+                try:
+                    with open(abs_path, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                    stdout = "--- /dev/null\n+++ " + rel_path + "\n"
+                    for line in lines:
+                        stdout += "+" + line
+                except:
+                    stdout = "Could not read untracked file."
+            else:
+                stdout = "No differences found."
+                
+        lines = stdout.split("\n")
+        for line in lines:
+            end_iter = self.diff_buffer.get_end_iter()
+            if line.startswith("+") and not line.startswith("+++"):
+                self.diff_buffer.insert_with_tags(end_iter, line + "\n", tag_add)
+            elif line.startswith("-") and not line.startswith("---"):
+                self.diff_buffer.insert_with_tags(end_iter, line + "\n", tag_del)
+            elif line.startswith("@@"):
+                self.diff_buffer.insert_with_tags(end_iter, line + "\n", tag_hdr)
+            else:
+                self.diff_buffer.insert(end_iter, line + "\n")
+
+    def on_git_file_activated(self, tree, path, column):
+        model = tree.get_model()
+        treeiter = model.get_iter(path)
+        abs_path = model[treeiter][2]
+        if os.path.exists(abs_path):
+            already_open = False
+            for t in self.tabs:
+                if t["filepath"] == abs_path:
+                    page_num = self.editor_notebook.page_num(t["scrolled"])
+                    self.editor_notebook.set_current_page(page_num)
+                    already_open = True
+                    break
+            if not already_open:
+                self.add_editor_tab(abs_path)
+
+    def on_git_stage_selected(self, button):
+        selection = self.git_tree.get_selection()
+        model, treeiter = selection.get_selected()
+        if treeiter is not None:
+            rel_path = model[treeiter][1]
+            current = self.get_current_tab()
+            if current and current["filepath"]:
+                git_root = self.get_git_root(current["filepath"])
+                if git_root:
+                    self.run_git_command(git_root, ["add", rel_path])
+                    self.refresh_git_status()
+
+    def on_git_unstage_selected(self, button):
+        selection = self.git_tree.get_selection()
+        model, treeiter = selection.get_selected()
+        if treeiter is not None:
+            rel_path = model[treeiter][1]
+            current = self.get_current_tab()
+            if current and current["filepath"]:
+                git_root = self.get_git_root(current["filepath"])
+                if git_root:
+                    self.run_git_command(git_root, ["reset", "HEAD", rel_path])
+                    self.refresh_git_status()
+
+    def on_git_commit_clicked(self, button):
+        msg = self.commit_entry.get_text().strip()
+        if not msg:
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                flags=0,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.OK,
+                text="Empty Commit Message"
+            )
+            dialog.run()
+            dialog.destroy()
+            return
+            
+        current = self.get_current_tab()
+        if current and current["filepath"]:
+            git_root = self.get_git_root(current["filepath"])
+            if git_root:
+                stdout, stderr = self.run_git_command(git_root, ["commit", "-m", msg])
+                self.commit_entry.set_text("")
+                self.refresh_git_status()
+                dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    flags=0,
+                    message_type=Gtk.MessageType.INFO,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Commit Successful" if not stderr else "Commit Result"
+                )
+                dialog.format_secondary_text(stdout if not stderr else stderr)
+                dialog.run()
+                dialog.destroy()
 
     def apply_diagnostics(self, file_path, diagnostics):
         matched_tab = None
