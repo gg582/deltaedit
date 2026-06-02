@@ -15,8 +15,9 @@ pip install tree-sitter tree-sitter-languages || echo "Optional tree-sitter modu
 
 echo "=== Compiling DeltaEdit with Nuitka (Standalone) ==="
 cd src
-python3 -m nuitka --standalone --enable-plugin=pygobject --assume-yes-for-download dedit.py
-python3 -m nuitka --standalone --enable-plugin=pygobject --assume-yes-for-download gmemo.py
+python3 -m nuitka --standalone --assume-yes-for-download dedit.py
+python3 -m nuitka --standalone --assume-yes-for-download gmemo.py
+
 
 echo "=== Installing DeltaEdit and GMemo binaries ==="
 sudo mkdir -p /opt/dedit
