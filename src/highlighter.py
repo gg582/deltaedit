@@ -4,10 +4,13 @@ from gi.repository import Pango
 # Optional tree-sitter package
 try:
     import tree_sitter
-    import tree_sitter_languages
+    import tree_sitter_python
+    import tree_sitter_rust
+    import tree_sitter_c
     HAS_TREE_SITTER = True
 except ImportError:
     HAS_TREE_SITTER = False
+
 
 
 class TreeSitterHighlighter:
@@ -34,9 +37,15 @@ class TreeSitterHighlighter:
             
         if lang_id:
             try:
-                self.lang = tree_sitter_languages.get_language(lang_id)
-                self.parser = tree_sitter.Parser()
-                self.parser.set_language(self.lang)
+                if lang_id == 'rust':
+                    self.lang = tree_sitter.Language(tree_sitter_rust.language())
+                elif lang_id == 'python':
+                    self.lang = tree_sitter.Language(tree_sitter_python.language())
+                elif lang_id == 'c':
+                    self.lang = tree_sitter.Language(tree_sitter_c.language())
+                
+                self.parser = tree_sitter.Parser(self.lang)
+
                 
                 # Define highlight tags
                 colors = {
