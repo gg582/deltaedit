@@ -2,6 +2,7 @@
 set -e
 
 echo "=== Preparing Build Environment (venv) ==="
+rm -rf build_env
 python3 -m venv --system-site-packages build_env
 source build_env/bin/activate
 
