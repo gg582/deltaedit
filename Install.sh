@@ -7,7 +7,10 @@ source build_env/bin/activate
 
 echo "=== Installing Build Dependencies ==="
 pip install --upgrade pip
-pip install nuitka tree-sitter tree-sitter-languages markdown
+pip install nuitka markdown
+# Optional packages might fail on certain python versions (like python 3.13), we proceed anyway
+pip install tree-sitter tree-sitter-languages || echo "Optional tree-sitter modules failed to install. Continuing build..."
+
 
 echo "=== Compiling DeltaEdit with Nuitka (Standalone) ==="
 cd src
