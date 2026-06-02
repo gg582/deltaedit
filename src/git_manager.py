@@ -37,7 +37,6 @@ class GitPanel(Gtk.Box):
         self.git_tree = Gtk.TreeView(model=self.git_store)
         
         col_status = Gtk.TreeViewColumn("Status", Gtk.CellRendererText(), text=0)
-        col_status.set_width(80)
         self.git_tree.append_column(col_status)
         
         col_file = Gtk.TreeViewColumn("File", Gtk.CellRendererText(), text=1)
