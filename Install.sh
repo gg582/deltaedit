@@ -2,7 +2,7 @@
 set -e
 
 echo "=== Preparing Build Environment (venv) ==="
-python3 -m venv build_env
+python3 -m venv --system-site-packages build_env
 source build_env/bin/activate
 
 echo "=== Installing Build Dependencies ==="
