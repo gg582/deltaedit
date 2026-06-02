@@ -46,9 +46,20 @@ For features like code autocomplete, diagnostics, and tree-sitter based highligh
   - Rust: `rust-analyzer`
 
 
+### Build & Installation Dependencies:
+For compiling the standalone application binaries via Nuitka:
+- Python 3 `venv` support (e.g., `python3-venv` on Debian/Ubuntu)
+- C Compiler: `gcc` or `clang`
+- Binary utility: `patchelf` (Highly recommended for Nuitka standalone packaging)
+
 ### Installation:
-1. Run `Installer.py` to install DeltaEdit.
-2. Run `Uninstaller.py` to uninstall DeltaEdit (if needed).
+1. Install system requirements:
+   ```bash
+   sudo apt install python3-venv gcc patchelf
+   ```
+2. Run `Installer.py` (or directly run `./Install.sh`) to build and install DeltaEdit.
+3. Run `Uninstaller.py` (or `./Uninstall.sh`) to uninstall DeltaEdit.
+
 
 ---
 

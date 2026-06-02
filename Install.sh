@@ -1,28 +1,60 @@
 #!/bin/bash
-cd src
-sudo touch /usr/bin/dedit
-sudo touch /usr/bin/gmemo
+set -e
 
-sudo cp -r --force dedit.py /usr/bin/dedit
-sudo cp -r --force gmemo.py /usr/bin/gmemo
+echo "=== Preparing Build Environment (venv) ==="
+python3 -m venv build_env
+source build_env/bin/activate
+
+echo "=== Installing Build Dependencies ==="
+pip install --upgrade pip
+pip install nuitka tree-sitter tree-sitter-languages markdown
+
+echo "=== Compiling DeltaEdit with Nuitka (Standalone) ==="
+cd src
+python3 -m nuitka --standalone --enable-plugin=pygobject --assume-yes-for-download dedit.py
+python3 -m nuitka --standalone --enable-plugin=pygobject --assume-yes-for-download gmemo.py
+
+echo "=== Installing DeltaEdit and GMemo binaries ==="
+sudo mkdir -p /opt/dedit
+sudo mkdir -p /opt/gmemo
+
+sudo cp -r --force dedit.dist/* /opt/dedit/
+sudo cp -r --force gmemo.dist/* /opt/gmemo/
+
+sudo ln -sf /opt/dedit/dedit /usr/bin/dedit
+sudo ln -sf /opt/gmemo/gmemo /usr/bin/gmemo
+
 cd ..
-sudo mkdir /etc/dedit
-sudo cp -r --force *.png /usr/share/pixmaps/
-sudo cp -r conf/*        /etc/dedit
+
+echo "=== Copying resources, metadata, and configuration ==="
+sudo mkdir -p /etc/dedit
+sudo cp -r --force dedit.png /usr/share/pixmaps/
+sudo cp -r --force dedit_logo.png /usr/share/pixmaps/
+sudo cp -r --force gmemo.png /usr/share/pixmaps/
+sudo cp -r conf/* /etc/dedit/
+
 cd desktop
-sudo cp -r --force DeltaEdit.desktop /usr/share/applications
-sudo cp -r --force GMemo.desktop /usr/share/applications
+sudo cp -r --force DeltaEdit.desktop /usr/share/applications/
+sudo cp -r --force GMemo.desktop /usr/share/applications/
 cd ..
+
 cd man
 sudo cp -r --force *.1.gz /usr/share/man/man1/
 cd ..
+
 cd etc
 sudo cp -r --force * /etc/dedit/
 cd ..
+
 sudo chmod +x /usr/share/applications/DeltaEdit.desktop
 sudo chmod +x /usr/share/applications/GMemo.desktop
-sudo chmod +x /usr/bin/dedit
-sudo chmod +x /usr/bin/gmemo
-echo 'command=dedit'
+
 sudo update-mime-database /usr/share/mime
-echo 'Done!'
+
+echo "=== Cleaning Up Build Environment ==="
+deactivate
+rm -rf build_env
+rm -rf src/dedit.build src/dedit.dist
+rm -rf src/gmemo.build src/gmemo.dist
+
+echo "=== Done! DeltaEdit successfully built and installed! ==="
