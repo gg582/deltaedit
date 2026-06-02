@@ -8,7 +8,7 @@ source build_env/bin/activate
 
 echo "=== Installing Build Dependencies ==="
 pip install --upgrade pip
-pip install markdown https://github.com/Nuitka/Nuitka/archive/factory.zip
+pip install nuitka markdown
 pip install tree-sitter tree-sitter-python tree-sitter-rust tree-sitter-c
 
 
@@ -16,14 +16,15 @@ pip install tree-sitter tree-sitter-python tree-sitter-rust tree-sitter-c
 echo "=== Compiling DeltaEdit with Nuitka (Standalone) ==="
 cd src
 python3 -m nuitka --standalone --assume-yes-for-download \
-  --include-module=lsp \
-  --include-module=highlighter \
-  --include-module=popup \
-  --include-module=git_manager \
-  --include-module=file_searcher \
-  --include-module=grep_searcher \
+  --include-package=gi \
+  --include-package=gi.repository \
+  --include-package=markdown \
+  --include-package=tree_sitter \
   dedit.py
-python3 -m nuitka --standalone --assume-yes-for-download gmemo.py
+python3 -m nuitka --standalone --assume-yes-for-download \
+  --include-package=gi \
+  --include-package=gi.repository \
+  gmemo.py
 
 
 
@@ -31,32 +32,32 @@ echo "=== Installing DeltaEdit and GMemo binaries ==="
 sudo mkdir -p /opt/dedit
 sudo mkdir -p /opt/gmemo
 
-sudo cp -r --force dedit.dist/* /opt/dedit/
-sudo cp -r --force gmemo.dist/* /opt/gmemo/
+sudo cp -a dedit.dist/. /opt/dedit/
+sudo cp -a gmemo.dist/. /opt/gmemo/
 
-sudo ln -sf /opt/dedit/dedit /usr/bin/dedit
-sudo ln -sf /opt/gmemo/gmemo /usr/bin/gmemo
+sudo ln -sf /opt/dedit/dedit.bin /usr/bin/dedit
+sudo ln -sf /opt/gmemo/gmemo.bin /usr/bin/gmemo
 
 cd ..
 
 echo "=== Copying resources, metadata, and configuration ==="
 sudo mkdir -p /etc/dedit
-sudo cp -r --force dedit.png /usr/share/pixmaps/
-sudo cp -r --force dedit_logo.png /usr/share/pixmaps/
-sudo cp -r --force gmemo.png /usr/share/pixmaps/
-sudo cp -r conf/* /etc/dedit/
+sudo cp -a dedit.png /usr/share/pixmaps/
+sudo cp -a dedit_logo.png /usr/share/pixmaps/
+sudo cp -a gmemo.png /usr/share/pixmaps/
+sudo cp -a conf/* /etc/dedit/
 
 cd desktop
-sudo cp -r --force DeltaEdit.desktop /usr/share/applications/
-sudo cp -r --force GMemo.desktop /usr/share/applications/
+sudo cp -a DeltaEdit.desktop /usr/share/applications/
+sudo cp -a GMemo.desktop /usr/share/applications/
 cd ..
 
 cd man
-sudo cp -r --force *.1.gz /usr/share/man/man1/
+sudo cp -a *.1.gz /usr/share/man/man1/
 cd ..
 
 cd etc
-sudo cp -r --force * /etc/dedit/
+sudo cp -a * /etc/dedit/
 cd ..
 
 sudo chmod +x /usr/share/applications/DeltaEdit.desktop

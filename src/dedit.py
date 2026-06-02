@@ -34,7 +34,6 @@ except ImportError:
 # Optional tree-sitter package
 try:
     import tree_sitter
-    import tree_sitter_languages
     HAS_TREE_SITTER = True
 except ImportError:
     HAS_TREE_SITTER = False
@@ -82,13 +81,43 @@ class AppWindow(Gtk.ApplicationWindow):
         
         # Layout splits
         self.main_paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
-        self.main_paned.set_position(700)
+        self.main_paned.set_position(900)
         self.add(self.main_paned)
+        
+        # Left inner paned: File Tree + Editor
+        self.left_paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        self.left_paned.set_position(220)
+        
+        # File Tree
+        self.file_tree_store = Gtk.TreeStore(str, str, str, bool)
+        self.file_tree_view = Gtk.TreeView(model=self.file_tree_store)
+        self.file_tree_view.set_headers_visible(False)
+        
+        renderer_icon = Gtk.CellRendererPixbuf()
+        renderer_text = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn()
+        column.pack_start(renderer_icon, False)
+        column.pack_start(renderer_text, True)
+        column.add_attribute(renderer_icon, "icon-name", 0)
+        column.add_attribute(renderer_text, "text", 1)
+        self.file_tree_view.append_column(column)
+        self.file_tree_view.connect("row-activated", self.on_tree_item_activated)
+        
+        self.file_tree_scrolled = Gtk.ScrolledWindow()
+        self.file_tree_scrolled.set_size_request(180, -1)
+        self.file_tree_scrolled.add(self.file_tree_view)
+        
+        self.left_paned.pack1(self.file_tree_scrolled, resize=False, shrink=False)
         
         # Left Panel: Editor Tabs
         self.editor_notebook = Gtk.Notebook()
         self.editor_notebook.connect("switch-page", self.on_tab_switched)
-        self.main_paned.pack1(self.editor_notebook, resize=True, shrink=False)
+        self.left_paned.pack2(self.editor_notebook, resize=True, shrink=False)
+        
+        self.main_paned.pack1(self.left_paned, resize=True, shrink=False)
+        
+        self.current_folder = None
+        self.view_mode = "split"
         
         # Right Panel: Utility Tabs
         self.tools_notebook = Gtk.Notebook()
@@ -140,9 +169,14 @@ class AppWindow(Gtk.ApplicationWindow):
         self.help_file = os.path.join(self.conf_dir, "help.txt")
         try:
             with open(self.help_file, 'w', encoding='utf-8') as f:
-                f.write("=== DeltaEdit Quick Help ===\n\nShortcuts:\n  Ctrl+N : New File\n  Ctrl+O : Open File\n  Ctrl+S : Save File\n  Ctrl+W : Close Current Tab\n  Ctrl+Shift+P : Preview Current Document\n  Ctrl+K : Cut Current Line\n  Ctrl+P : Search File (Fuzzy)\n  Ctrl+Shift+F : Search Text (Grep)\n  Ctrl+Z : Undo\n  Ctrl+Y : Redo\n\nWeb + Editor Integration:\n  - Right click on text selection to search Google in Web Tab.\n  - Press Preview button in Web Browser to preview markdown or HTML live.\n")
+                f.write("=== DeltaEdit Quick Help ===\n\nShortcuts:\n  Ctrl+N : New File\n  Ctrl+O : Open File\n  Ctrl+Shift+D : Open Folder\n  Ctrl+S : Save File\n  Ctrl+W : Close Current Tab\n  Ctrl+Shift+P : Preview Current Document\n  Ctrl+K : Cut Current Line\n  Ctrl+P : Search File (Fuzzy)\n  Ctrl+Shift+F : Search Text (Grep)\n  Ctrl+Z : Undo\n  Ctrl+Y : Redo\n  Ctrl+Left  : Focus Right Panel (Tools)\n  Ctrl+Right : Focus Left Panel (Editor)\n  Ctrl+Up    : Restore Split View\n\nWeb + Editor Integration:\n  - Right click on text selection to search Google in Web Tab.\n  - Press Preview button in Web Browser to preview markdown or HTML live.\n")
         except:
             pass
+
+        # Bookmarks config
+        self.bookmarks_file = os.path.join(self.conf_dir, "bookmarks.json")
+        self.bookmarks = []
+        self.load_bookmarks()
 
     def check_system_dark(self):
         settings = Gtk.Settings.get_default()
@@ -561,7 +595,19 @@ class AppWindow(Gtk.ApplicationWindow):
         btn_combine.connect("clicked", self.on_combine_clicked)
         self.hb.pack_start(btn_combine)
 
+        btn_open_folder = Gtk.Button.new_from_icon_name("folder-open", Gtk.IconSize.BUTTON)
+        btn_open_folder.set_tooltip_text("Open Folder (Ctrl+Shift+D)")
+        btn_open_folder.connect("clicked", self.on_open_folder_clicked)
+        self.hb.pack_start(btn_open_folder)
+
         # Right controls
+        self.hb_url_entry = Gtk.Entry()
+        self.hb_url_entry.set_placeholder_text("Enter URL...")
+        self.hb_url_entry.set_tooltip_text("Type URL and press Enter to open in Web Browser")
+        self.hb_url_entry.set_width_chars(28)
+        self.hb_url_entry.connect("activate", self.on_hb_url_activated)
+        self.hb.pack_end(self.hb_url_entry)
+
         btn_info = Gtk.Button.new_from_icon_name("help-about", Gtk.IconSize.BUTTON)
         btn_info.connect("clicked", self.on_info_clicked)
         self.hb.pack_end(btn_info)
@@ -592,14 +638,19 @@ class AppWindow(Gtk.ApplicationWindow):
         dialog.format_secondary_text(
             "• Ctrl + N : Create New File\n"
             "• Ctrl + O : Open File\n"
+            "• Ctrl + Shift + D : Open Folder\n"
             "• Ctrl + S : Save File\n"
             "• Ctrl + Shift + S : Save File As\n"
             "• Ctrl + W : Close Current Tab\n"
             "• Ctrl + Shift + P : Preview Current Document\n"
             "• Ctrl + K : Cut Current Line\n"
-            "• Ctrl + P : Paste from Clipboard\n"
+            "• Ctrl + P : Search File (Fuzzy)\n"
+            "• Ctrl + Shift + F : Search Text (Grep)\n"
             "• Ctrl + Z : Undo\n"
-            "• Ctrl + Y : Redo"
+            "• Ctrl + Y : Redo\n"
+            "• Ctrl + Left  : Focus Right Panel (Tools)\n"
+            "• Ctrl + Right : Focus Left Panel (Editor)\n"
+            "• Ctrl + Up    : Restore Split View"
         )
         dialog.run()
         dialog.destroy()
@@ -644,6 +695,10 @@ class AppWindow(Gtk.ApplicationWindow):
         key, mod = Gtk.accelerator_parse("<Control><Shift>f")
         accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.open_grep_searcher())
         
+        # Ctrl+Shift+D : Open Folder
+        key, mod = Gtk.accelerator_parse("<Control><Shift>d")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.on_open_folder_clicked(None))
+        
         # Ctrl+Z : Undo
         key, mod = Gtk.accelerator_parse("<Control>z")
         accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.undo_action())
@@ -651,6 +706,18 @@ class AppWindow(Gtk.ApplicationWindow):
         # Ctrl+Y : Redo
         key, mod = Gtk.accelerator_parse("<Control>y")
         accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.redo_action())
+        
+        # Ctrl+Left : Show Tools (Right) Fullscreen
+        key, mod = Gtk.accelerator_parse("<Control>Left")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.show_tools_full())
+        
+        # Ctrl+Right : Show Editor (Left) Fullscreen
+        key, mod = Gtk.accelerator_parse("<Control>Right")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.show_editor_full())
+        
+        # Ctrl+Up : Restore Split View
+        key, mod = Gtk.accelerator_parse("<Control>Up")
+        accel.connect(key, mod, Gtk.AccelFlags.VISIBLE, lambda *a: self.show_split())
 
     def open_file_searcher(self):
         popup = FileSearcherPopup(self)
@@ -734,12 +801,28 @@ class AppWindow(Gtk.ApplicationWindow):
         btn_preview = Gtk.Button.new_with_label("Preview Current")
         btn_preview.set_tooltip_text("Live preview Markdown or HTML (Ctrl+P)")
         btn_preview.connect("clicked", self.on_preview_clicked)
+        
+        btn_bookmark_add = Gtk.Button.new_from_icon_name("bookmark-new", Gtk.IconSize.MENU)
+        btn_bookmark_add.set_tooltip_text("Add Current Page to Bookmarks")
+        btn_bookmark_add.connect("clicked", self.on_bookmark_add_clicked)
+        
+        btn_bookmark_remove = Gtk.Button.new_from_icon_name("list-remove", Gtk.IconSize.MENU)
+        btn_bookmark_remove.set_tooltip_text("Remove Selected Bookmark")
+        btn_bookmark_remove.connect("clicked", self.on_bookmark_remove_clicked)
+        
+        self.bookmark_combo = Gtk.ComboBoxText()
+        self.bookmark_combo.set_tooltip_text("Select a bookmark")
+        self.bookmark_combo.connect("changed", self.on_bookmark_selected)
+        self.refresh_bookmark_combo()
 
         toolbar.pack_start(btn_back, False, False, 0)
         toolbar.pack_start(btn_forward, False, False, 0)
         toolbar.pack_start(btn_refresh, False, False, 0)
         toolbar.pack_start(self.url_entry, True, True, 0)
         toolbar.pack_start(btn_preview, False, False, 0)
+        toolbar.pack_start(btn_bookmark_add, False, False, 0)
+        toolbar.pack_start(btn_bookmark_remove, False, False, 0)
+        toolbar.pack_start(self.bookmark_combo, False, False, 0)
         
         web_box.pack_start(toolbar, False, False, 0)
         
@@ -1370,6 +1453,159 @@ class AppWindow(Gtk.ApplicationWindow):
         url = f"https://www.google.com/search?q={query}"
         self.webview.load_uri(url)
         self.tools_notebook.set_current_page(0)
+
+    def on_hb_url_activated(self, entry):
+        url = entry.get_text().strip()
+        if not url:
+            return
+        if not (url.startswith("http://") or url.startswith("https://")):
+            if "." in url and " " not in url:
+                url = "https://" + url
+            else:
+                query = urllib.parse.quote(url)
+                url = f"https://www.google.com/search?q={query}"
+        self.webview.load_uri(url)
+        self.tools_notebook.set_current_page(0)
+
+    def on_open_folder_clicked(self, widget):
+        dialog = Gtk.FileChooserDialog(
+            "Open Folder...",
+            self,
+            Gtk.FileChooserAction.SELECT_FOLDER,
+            (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, Gtk.STOCK_OPEN, Gtk.ResponseType.OK)
+        )
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            folder_path = dialog.get_filename()
+            self.current_folder = folder_path
+            self.populate_file_tree(folder_path)
+        dialog.destroy()
+
+    def populate_file_tree(self, root_path):
+        self.file_tree_store.clear()
+        if not root_path or not os.path.isdir(root_path):
+            return
+
+        def add_children(parent_iter, path):
+            try:
+                entries = sorted(os.listdir(path))
+            except Exception:
+                return
+            dirs = []
+            files = []
+            for entry in entries:
+                if entry.startswith('.'):
+                    continue
+                full = os.path.join(path, entry)
+                if os.path.isdir(full):
+                    dirs.append(entry)
+                else:
+                    files.append(entry)
+            for d in dirs:
+                full = os.path.join(path, d)
+                piter = self.file_tree_store.append(parent_iter, ["folder", d, full, True])
+                add_children(piter, full)
+            for f in files:
+                full = os.path.join(path, f)
+                self.file_tree_store.append(parent_iter, ["text-x-generic", f, full, False])
+
+        add_children(None, root_path)
+
+    def on_tree_item_activated(self, treeview, path, column):
+        model = treeview.get_model()
+        iter_ = model.get_iter(path)
+        if not iter_:
+            return
+        full_path = model[iter_][2]
+        is_folder = model[iter_][3]
+        if is_folder:
+            if treeview.row_expanded(path):
+                treeview.collapse_row(path)
+            else:
+                treeview.expand_row(path, False)
+        else:
+            if os.path.isfile(full_path):
+                self.add_editor_tab(full_path)
+
+    def show_tools_full(self):
+        self.left_paned.hide()
+        self.tools_notebook.show()
+        self.view_mode = "tools"
+
+    def show_editor_full(self):
+        self.tools_notebook.hide()
+        self.left_paned.show()
+        self.view_mode = "editor"
+
+    def show_split(self):
+        self.tools_notebook.show()
+        self.left_paned.show()
+        self.main_paned.set_position(900)
+        self.left_paned.set_position(220)
+        self.view_mode = "split"
+
+    def load_bookmarks(self):
+        if os.path.exists(self.bookmarks_file):
+            try:
+                with open(self.bookmarks_file, 'r', encoding='utf-8') as f:
+                    self.bookmarks = json.load(f)
+                    if not isinstance(self.bookmarks, list):
+                        self.bookmarks = []
+            except Exception:
+                self.bookmarks = []
+        else:
+            self.bookmarks = []
+
+    def save_bookmarks(self):
+        try:
+            with open(self.bookmarks_file, 'w', encoding='utf-8') as f:
+                json.dump(self.bookmarks, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print("Failed to save bookmarks:", e)
+
+    def refresh_bookmark_combo(self):
+        if not hasattr(self, 'bookmark_combo') or not self.bookmark_combo:
+            return
+        # Block changed signal to avoid accidental navigation during refresh
+        try:
+            self.bookmark_combo.handler_block_by_func(self.on_bookmark_selected)
+        except TypeError:
+            pass
+        self.bookmark_combo.remove_all()
+        for bm in self.bookmarks:
+            title = bm.get("title", bm.get("url", "Untitled"))
+            self.bookmark_combo.append_text(title)
+        self.bookmark_combo.set_active(-1)
+        try:
+            self.bookmark_combo.handler_unblock_by_func(self.on_bookmark_selected)
+        except TypeError:
+            pass
+
+    def on_bookmark_add_clicked(self, widget):
+        uri = self.webview.get_uri()
+        if not uri:
+            return
+        title = self.url_entry.get_text().strip() or uri
+        self.bookmarks.append({"title": title, "url": uri})
+        self.save_bookmarks()
+        self.refresh_bookmark_combo()
+
+    def on_bookmark_remove_clicked(self, widget):
+        active = self.bookmark_combo.get_active()
+        if active < 0 or active >= len(self.bookmarks):
+            return
+        self.bookmarks.pop(active)
+        self.save_bookmarks()
+        self.refresh_bookmark_combo()
+
+    def on_bookmark_selected(self, combo):
+        active = combo.get_active()
+        if active < 0 or active >= len(self.bookmarks):
+            return
+        url = self.bookmarks[active].get("url")
+        if url:
+            self.webview.load_uri(url)
+            self.url_entry.set_text(url)
 
 
 class Application(Gtk.Application):
