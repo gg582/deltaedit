@@ -15,8 +15,16 @@ pip install tree-sitter tree-sitter-languages || echo "Optional tree-sitter modu
 
 echo "=== Compiling DeltaEdit with Nuitka (Standalone) ==="
 cd src
-python3 -m nuitka --standalone --assume-yes-for-download dedit.py
+python3 -m nuitka --standalone --assume-yes-for-download \
+  --include-module=lsp \
+  --include-module=highlighter \
+  --include-module=popup \
+  --include-module=git_manager \
+  --include-module=file_searcher \
+  --include-module=grep_searcher \
+  dedit.py
 python3 -m nuitka --standalone --assume-yes-for-download gmemo.py
+
 
 
 echo "=== Installing DeltaEdit and GMemo binaries ==="
